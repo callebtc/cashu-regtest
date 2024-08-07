@@ -1,6 +1,6 @@
 ![TESTS](https://github.com/lnbits/legend-regtest-enviroment/actions/workflows/ci.yml/badge.svg)
 
-# nodes
+# Nodes
 * lnd-1: for testing your software
 * lnd-2: used for boltz backend
 * lnd-3: used for lnbits inside docker
@@ -20,7 +20,7 @@ cd cashu-regtest
 ```
 
 # Running Nutshell on regtest
-add this ENV variables to your `.env` file (assuming that the `cashu-regtest` directory is in `../` from the `nutshell` directory)
+Add this ENV variables to your `.env` file (assuming that the `cashu-regtest` directory is in `../` from the `nutshell` directory)
 ```sh
 # LND
 MINT_BACKEND_BOLT11_SAT=LndRestWallet
@@ -64,7 +64,7 @@ lncli-sim 2 listpeers
 * lnd-1 rest: http://localhost:8081/
 * lnbits: http://localhost:5001/
 
-# debugging docker logs
+# Debugging docker logs
 ```sh
 docker logs cashu-lnbits-1 -f
 docker logs cashu-boltz-1 -f
