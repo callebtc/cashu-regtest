@@ -8,7 +8,7 @@
 * cln-2: used for clightning-REST
 
 # Installing regtest 
-get the regtest environment ready
+Get the regtest environment ready
 ```sh
 # Install docker https://docs.docker.com/engine/install/
 # Make sure your user has permission to use docker 'sudo usermod -aG docker ${USER}' then reboot
