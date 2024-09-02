@@ -131,7 +131,7 @@ services:
   mempool-web:
     hostname: web
     depends_on:
-      - mempool-db
+      - mempool-api
     environment:
       FRONTEND_HTTP_PORT: "8080"
       BACKEND_MAINNET_HTTP_HOST: "api"
@@ -169,6 +169,8 @@ services:
 
   mempool-db:
     hostname: mempool-db
+    depends_on:
+      - bitcoind
     environment:
       MYSQL_DATABASE: "mempool"
       MYSQL_USER: "mempool"
