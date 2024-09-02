@@ -129,6 +129,9 @@ services:
       - ./data/lnd-3:/app/lnd:uid=1000,gid=1000
 
   mempool-web:
+    hostname: web
+    depends_on:
+      - mempool-db
     environment:
       FRONTEND_HTTP_PORT: "8080"
       BACKEND_MAINNET_HTTP_HOST: "api"
@@ -141,6 +144,9 @@ services:
       - 80:8080
 
   mempool-api:
+    hostname: api
+    depends_on:
+      - mempool-db
     environment:
       MEMPOOL_BACKEND: "none"
       CORE_RPC_HOST: "172.27.0.1"
@@ -148,7 +154,7 @@ services:
       CORE_RPC_USERNAME: "cashu"
       CORE_RPC_PASSWORD: "cashu"
       DATABASE_ENABLED: "true"
-      DATABASE_HOST: "db"
+      DATABASE_HOST: "mempool-db"
       DATABASE_DATABASE: "mempool"
       DATABASE_USERNAME: "mempool"
       DATABASE_PASSWORD: "mempool"
@@ -162,6 +168,7 @@ services:
       - ./data/mempool-data:/backend/cache
 
   mempool-db:
+    hostname: mempool-db
     environment:
       MYSQL_DATABASE: "mempool"
       MYSQL_USER: "mempool"
