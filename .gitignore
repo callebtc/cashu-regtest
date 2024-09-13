@@ -7,3 +7,8 @@ data/electrs/*
 !data/electrs/config.toml
 mempool/*
 data/mempool/*
+.envrc
+cashu_regtest_env/
+backend/GeoIP/GeoLite2-City.mmdb
+backend/GeoIP/GeoLite2-ASN.mmdb
+.envrc
