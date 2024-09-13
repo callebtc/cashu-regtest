@@ -1,14 +1,25 @@
-data
-!data/boltz
-data/boltz/*
+# Ignore all content in the data directory
+data/*
+
+# Exceptions for the boltz directory
+!data/boltz/
 !data/boltz/boltz.conf
-!data/electrs
-data/electrs/*
+
+# Ignore all content in the boltz directory except boltz.conf
+# data/boltz/*   <- Esta línea es redundante y puede eliminarse
+
+# Exceptions for the electrs directory
+!data/electrs/
 !data/electrs/config.toml
-mempool/*
+
+# Ignore all content in the electrs directory except config.toml
+# data/electrs/*  <- Esta línea es redundante y puede eliminarse
+
+# Ignore all content in the mempool directory
 data/mempool/*
+
+# Ignore specific files and directories
 .envrc
 cashu_regtest_env/
 backend/GeoIP/GeoLite2-City.mmdb
 backend/GeoIP/GeoLite2-ASN.mmdb
-.envrc
