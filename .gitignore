@@ -1,5 +1,6 @@
 # Ignore all content in the data directory
 data/*
+mysql/*
 
 # Exceptions for the boltz directory
 !data/boltz/
@@ -19,7 +20,8 @@ data/*
 data/mempool/*
 
 # Ignore specific files and directories
-.envrc
+.env
 cashu_regtest_env/
 backend/GeoIP/GeoLite2-City.mmdb
 backend/GeoIP/GeoLite2-ASN.mmdb
+.envrc
