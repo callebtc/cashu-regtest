@@ -1,6 +1,8 @@
 ![TESTS](https://github.com/lnbits/legend-regtest-enviroment/actions/workflows/ci.yml/badge.svg)
 
 # Nodes
+
+Here is the complete list of nodes and services:
 * lnd-1: for testing your software
 * lnd-2: used for boltz backend
 * lnd-3: used for lnbits inside docker
