@@ -21,7 +21,7 @@ data/mempool/*
 
 # Ignore specific files and directories
 .env
-cashu_regtest_env/
+mempool/mysql/
 backend/GeoIP/GeoLite2-City.mmdb
 backend/GeoIP/GeoLite2-ASN.mmdb
 .envrc
