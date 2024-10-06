@@ -1,27 +1,16 @@
 # Ignore all content in the data directory
 data/*
-mysql/*
+mempool/mysql/
 
 # Exceptions for the boltz directory
 !data/boltz/
 !data/boltz/boltz.conf
 
-# Ignore all content in the boltz directory except boltz.conf
-# data/boltz/*   <- Esta línea es redundante y puede eliminarse
-
 # Exceptions for the electrs directory
 !data/electrs/
 !data/electrs/config.toml
 
-# Ignore all content in the electrs directory except config.toml
-# data/electrs/*  <- Esta línea es redundante y puede eliminarse
-
-# Ignore all content in the mempool directory
-data/mempool/*
-
 # Ignore specific files and directories
 .env
-mempool/mysql/
-backend/GeoIP/GeoLite2-City.mmdb
-backend/GeoIP/GeoLite2-ASN.mmdb
-.envrc
+.python-version
+
