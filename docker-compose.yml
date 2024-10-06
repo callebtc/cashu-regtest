@@ -148,9 +148,13 @@ services:
     depends_on:
       - mempool-db
     environment:
-      MEMPOOL_BACKEND: "none"
-      CORE_RPC_HOST: "172.27.0.1"
-      CORE_RPC_PORT: "8332"
+      MEMPOOL_NETWORK: "regtest"
+      MEMPOOL_BACKEND: "electrum"
+      ELECTRUM_HOST: "fulcrum"
+      ELECTRUM_PORT: "50001"
+      ELECTRUM_TLS_ENABLED: "false"
+      CORE_RPC_HOST: "bitcoind"
+      CORE_RPC_PORT: "18443"
       CORE_RPC_USERNAME: "cashu"
       CORE_RPC_PASSWORD: "cashu"
       DATABASE_ENABLED: "true"
@@ -162,7 +166,7 @@ services:
     image: mempool/backend:latest
     user: "1000:1000"
     restart: on-failure
-    stop_grace_period: 1m
+    stop_grace_period: 20s
     command: "./wait-for-it.sh mempool-db:3306 --timeout=720 --strict -- ./start.sh"
     volumes:
       - ./data/mempool-data:/backend/cache
@@ -186,6 +190,24 @@ services:
       - 3306
     volumes:
       - ./mysql/data:/var/lib/mysql        
+
+  fulcrum:
+    hostname: fulcrum
+    depends_on:
+      - mempool-api
+    build: ./docker-fulcrum/regtest/
+    #dockerfile: Dockerfile
+    #container_name: fulcrum-testnet
+    #volumes:
+      #- /mnt/usb/fulcrum/testnet-blockchain:/home/safeuser/blockchain
+      #- /mnt/data/bitcoin.com/blockchain-data/fulcrum/testnet/blockchain:/home/safeuser/blockchain
+    ports:
+      - 50001:50001
+      - 50002:50002
+    expose:
+      - 50001
+      - 50002
+    restart: always
 
 volumes:
   lnbits-data:
