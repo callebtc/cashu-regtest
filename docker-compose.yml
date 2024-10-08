@@ -147,6 +147,7 @@ services:
     hostname: mempool-api
     depends_on:
       - mempool-db
+      - fulcrum
     environment:
       MEMPOOL_NETWORK: "regtest"
       MEMPOOL_BACKEND: "electrum"
@@ -189,18 +190,13 @@ services:
     expose:
       - 3306
     volumes:
-      - ./mysql/data:/var/lib/mysql        
+      - ./mempool/mysql/data:/var/lib/mysql        
 
   fulcrum:
     hostname: fulcrum
     depends_on:
-      - mempool-api
-    build: ./docker-fulcrum/regtest/
-    #dockerfile: Dockerfile
-    #container_name: fulcrum-testnet
-    #volumes:
-      #- /mnt/usb/fulcrum/testnet-blockchain:/home/safeuser/blockchain
-      #- /mnt/data/bitcoin.com/blockchain-data/fulcrum/testnet/blockchain:/home/safeuser/blockchain
+      - bitcoind
+    build: ./mempool/fulcrum/regtest/
     ports:
       - 50001:50001
       - 50002:50002
