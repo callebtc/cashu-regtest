@@ -8,6 +8,8 @@ Here is the complete list of nodes and services:
 * lnd-3: used for lnbits inside docker
 * cln-1: for testing your software
 * cln-2: used for clightning-REST
+* mempool (api|web|db): Mempool Explorer
+* fulcrum: Electrum Server
 
 # Installing regtest 
 Get the regtest environment ready
