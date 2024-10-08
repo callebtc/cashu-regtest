@@ -1,6 +1,6 @@
 # Ignore all content in the data directory
 data/*
-mempool/mysql/*
+mempool/mysql/data/*
 
 # Exceptions for the boltz directory
 !data/boltz/
