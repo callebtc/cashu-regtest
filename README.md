@@ -6,10 +6,27 @@ Here is the complete list of nodes and services:
 * lnd-1: for testing your software
 * lnd-2: used for boltz backend
 * lnd-3: used for lnbits inside docker
-* cln-1: for testing your software
-* cln-2: used for clightning-REST
+* clightning-1: for testing your software
+* clightning-2: used for clightning-REST
+* clightning-2-rest: used for clightning-REST
+* clightning-3: for tenting your software
 * mempool (api|web|db): Mempool Explorer
 * fulcrum: Electrum Server
+
+-mempool-web-1
+-mempool-api-1
+-mempool-db-1
+-fulcrum
+
+-lnbits-1
+-clightning-2-rest-1
+-clightning-1-1
+-clightning-3-1
+-clightning-2-1
+-lnd-3-1
+-lnd-1-1
+-lnd-2-1
+-bitcoind-1
 
 # Installing regtest 
 Get the regtest environment ready
