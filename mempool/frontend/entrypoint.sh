@@ -43,7 +43,7 @@ __ACCELERATOR__=${ACCELERATOR:=false}
 __ACCELERATOR_BUTTON__=${ACCELERATOR_BUTTON:=true}
 __SERVICES_API__=${SERVICES_API:=https://mempool.space/api/v1/services}
 __PUBLIC_ACCELERATIONS__=${PUBLIC_ACCELERATIONS:=false}
-__HISTORICAL_PRICE__=${HISTORICAL_PRICE:=true}
+__HISTORICAL_PRICE__=${HISTORICAL_PRICE:=false}
 __ADDITIONAL_CURRENCIES__=${ADDITIONAL_CURRENCIES:=false}
 
 # Export as environment variables to be used by envsubst

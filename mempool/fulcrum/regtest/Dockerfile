@@ -40,15 +40,11 @@ RUN chmod +x Fulcrum
 
 # Switch to user account.
 USER safeuser
-# Prep 'sudo' commands.
-#RUN echo 'abcd8765' | sudo -S pwd
 
 # Used to hold the Fulcrum database.
 RUN mkdir blockchain
 
 # Start Fulcrum server.
-#CMD ["tail", "-f", "/dev/null"]
-#MD ["./Fulcrum", "regtest.conf"]
 CMD ["./Fulcrum", "-D", "./datadir/", "-b", "bitcoind:18443", "-u", "cashu", "-p", "cashu"]
 
 

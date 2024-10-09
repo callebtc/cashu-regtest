@@ -1,81 +1,81 @@
 #!/bin/bash
 
-# Ruta del directorio de trabajo
+# Path to the working directory
 WORK_DIR="/home/safeuser"
 LOG_FILE="$WORK_DIR/setup-openssl.log"
 
-# Crea un nuevo archivo de log
-echo "Inicio de la configuración de OpenSSL" > "$LOG_FILE"
+# Create a new log file
+echo "Starting OpenSSL setup" > "$LOG_FILE"
 
-# Cambia al directorio de trabajo
+# Change to the working directory
 if [ ! -d "$WORK_DIR" ]; then
-  echo "Directorio de trabajo $WORK_DIR no existe." >> "$LOG_FILE"
-  exit 1
+    echo "Working directory $WORK_DIR does not exist." >> "$LOG_FILE"
+    exit 1
 fi
 
-cd "$WORK_DIR" || { echo "No se pudo cambiar al directorio $WORK_DIR" >> "$LOG_FILE"; exit 1; }
+cd "$WORK_DIR" || { echo "Could not change to directory $WORK_DIR" >> "$LOG_FILE"; exit 1; }
 
-# Verifica la versión de OpenSSL
+# Check the OpenSSL version
 {
-    echo "Verificando versión de OpenSSL..."
-    openssl version >> "$LOG_FILE" 2>&1
+        echo "Checking OpenSSL version..."
+        openssl version >> "$LOG_FILE" 2>&1
 } || {
-    echo "Error al verificar la versión de OpenSSL." >> "$LOG_FILE"
-    exit 1
+        echo "Error checking OpenSSL version." >> "$LOG_FILE"
+        exit 1
 }
 
-# Genera una clave privada sin frase de contraseña
+# Generate a private key without a passphrase
 {
-    echo "Generando clave privada..."
-    openssl genrsa -out server.key 2048 >> "$LOG_FILE" 2>&1
+        echo "Generating private key..."
+        openssl genrsa -out server.key 2048 >> "$LOG_FILE" 2>&1
 } || {
-    echo "Error al generar la clave privada." >> "$LOG_FILE"
-    exit 1
+        echo "Error generating private key." >> "$LOG_FILE"
+        exit 1
 }
 
-# Verifica si la clave privada se ha creado
+# Check if the private key has been created
 if [ ! -f "server.key" ]; then
-  echo "No se pudo generar la clave privada." >> "$LOG_FILE"
-  exit 1
+    echo "Could not generate private key." >> "$LOG_FILE"
+    exit 1
 fi
 
-# Crea una solicitud de firma de certificado (CSR)
+# Create a Certificate Signing Request (CSR)
 {
-    echo "Generando CSR..."
-    openssl req -new -key server.key -out server.csr -config openssl.cnf -batch >> "$LOG_FILE" 2>&1
+        echo "Generating CSR..."
+        openssl req -new -key server.key -out server.csr -config openssl.cnf -batch >> "$LOG_FILE" 2>&1
 } || {
-    echo "Error al generar la solicitud de firma de certificado (CSR)." >> "$LOG_FILE"
-    exit 1
+        echo "Error generating Certificate Signing Request (CSR)." >> "$LOG_FILE"
+        exit 1
 }
 
-# Verifica si la solicitud de firma de certificado (CSR) se ha creado
+# Check if the CSR has been created
 if [ ! -f "server.csr" ]; then
-  echo "No se pudo generar la solicitud de firma de certificado (CSR)." >> "$LOG_FILE"
-  exit 1
-fi
-
-# Genera un certificado auto-firmado
-{
-    echo "Generando certificado..."
-    openssl x509 -req -sha256 -days 365 -in server.csr -signkey server.key -out server.crt -extensions req_ext -extfile openssl.cnf >> "$LOG_FILE" 2>&1
-} || {
-    echo "Error al generar el certificado." >> "$LOG_FILE"
+    echo "Could not generate Certificate Signing Request (CSR)." >> "$LOG_FILE"
     exit 1
-}
-
-# Verifica si el certificado se ha creado
-if [ ! -f "server.crt" ]; then
-  echo "No se pudo generar el certificado." >> "$LOG_FILE"
-  exit 1
 fi
 
-# Elimina los archivos temporales si existen
+# Generate a self-signed certificate
 {
-    echo "Eliminando archivos temporales..."
-    rm -f server.csr >> "$LOG_FILE" 2>&1
+        echo "Generating certificate..."
+        openssl x509 -req -sha256 -days 365 -in server.csr -signkey server.key -out server.crt -extensions req_ext -extfile openssl.cnf >> "$LOG_FILE" 2>&1
 } || {
-    echo "Error al eliminar los archivos temporales." >> "$LOG_FILE"
+        echo "Error generating certificate." >> "$LOG_FILE"
+        exit 1
 }
 
-echo "Proceso completado exitosamente." >> "$LOG_FILE"
+# Check if the certificate has been created
+if [ ! -f "server.crt" ]; then
+    echo "Could not generate certificate." >> "$LOG_FILE"
+    exit 1
+fi
+
+# Delete temporary files if they exist
+{
+        echo "Deleting temporary files..."
+        rm -f server.csr >> "$LOG_FILE" 2>&1
+} || {
+        echo "Error deleting temporary files." >> "$LOG_FILE"
+}
+
+echo "Process completed successfully." >> "$LOG_FILE"
 

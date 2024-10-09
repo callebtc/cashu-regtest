@@ -89,7 +89,7 @@ cashu-bitcoin-init(){
   for i in $(seq 1 10); do
     bitcoin-cli-sim createwallet cashu && break  || sleep 1
   done
-  bitcoin-cli-sim loadwallet cashu
+  bitcoin-cli-sim loadwallet cashu > /dev/null
   echo "mining 150 blocks..."
   bitcoin-cli-sim -generate 150 > /dev/null
 }
