@@ -74,9 +74,10 @@ cashu-regtest-start-log(){
 cashu-regtest-stop(){
   docker compose down --volumes
   # clean up lightning node data
-  sudo rm -rf ./data/clightning-1 ./data/clightning-2 ./data/clightning-3 ./data/lnd-1  ./data/lnd-2 ./data/lnd-3 ./data/boltz/boltz.db
+  sudo rm -rf ./data/clightning-1 ./data/clightning-2 ./data/clightning-3 ./data/lnd-1  ./data/lnd-2 ./data/lnd-3 ./data/boltz/boltz.db ./data/mempool-data ./mempool/mysql/data/
   # recreate lightning node data folders preventing permission errors
-  mkdir ./data/clightning-1 ./data/clightning-2 ./data/clightning-3 ./data/lnd-1 ./data/lnd-2 ./data/lnd-3
+  mkdir ./data/clightning-1 ./data/clightning-2 ./data/clightning-3 ./data/lnd-1 ./data/lnd-2 ./data/lnd-3 ./data/mempool-data 
+  mkdir -p ./mempool/mysql/data/
 }
 
 cashu-regtest-restart(){
@@ -89,7 +90,7 @@ cashu-bitcoin-init(){
   for i in $(seq 1 10); do
     bitcoin-cli-sim createwallet cashu && break  || sleep 1
   done
-  bitcoin-cli-sim loadwallet cashu
+  bitcoin-cli-sim loadwallet cashu > /dev/null
   echo "mining 150 blocks..."
   bitcoin-cli-sim -generate 150 > /dev/null
 }

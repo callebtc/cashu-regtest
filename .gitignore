@@ -1,7 +1,16 @@
-data
-!data/boltz
-data/boltz/*
+# Ignore all content in the data directory
+data/*
+mempool/mysql/data/*
+
+# Exceptions for the boltz directory
+!data/boltz/
 !data/boltz/boltz.conf
-!data/electrs
-data/electrs/*
+
+# Exceptions for the electrs directory
+!data/electrs/
 !data/electrs/config.toml
+
+# Ignore specific files and directories
+.env
+.python-version
+

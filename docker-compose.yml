@@ -64,7 +64,7 @@ services:
     hostname: lnd-1
     depends_on:
       - bitcoind
-    image: boltz/lnd:0.18.1-beta
+    image: boltz/lnd:0.18.2-beta
     restart: on-failure
     entrypoint: "sh -c 'sleep 20; lnd --listen=lnd-1:9735 --rpclisten=lnd-1:10009 --restlisten=lnd-1:8081 --bitcoin.active --bitcoin.regtest --bitcoin.node=bitcoind --bitcoind.rpchost=bitcoind --bitcoind.zmqpubrawtx=bitcoind:29000 --bitcoind.zmqpubrawblock=bitcoind:29001 --bitcoind.rpcuser=cashu --bitcoind.rpcpass=cashu --noseedbackup --protocol.wumbo-channels'"
     expose:
@@ -78,7 +78,7 @@ services:
     hostname: lnd-2
     depends_on:
       - bitcoind
-    image: boltz/lnd:0.18.1-beta
+    image: boltz/lnd:0.18.2-beta
     restart: on-failure
     entrypoint: "sh -c 'sleep 20; lnd --listen=lnd-2:9735 --rpclisten=lnd-2:10009 --restlisten=lnd-2:8081 --bitcoin.active --bitcoin.regtest --bitcoin.node=bitcoind --bitcoind.rpchost=bitcoind --bitcoind.zmqpubrawtx=bitcoind:29000 --bitcoind.zmqpubrawblock=bitcoind:29001 --bitcoind.rpcuser=cashu --bitcoind.rpcpass=cashu --noseedbackup --protocol.wumbo-channels'"
     expose:
@@ -92,7 +92,7 @@ services:
     hostname: lnd-3
     depends_on:
       - bitcoind
-    image: boltz/lnd:0.18.1-beta
+    image: boltz/lnd:0.18.2-beta
     restart: on-failure
     entrypoint: "sh -c 'sleep 20; lnd --listen=lnd-3:9735 --rpclisten=lnd-3:10009 --restlisten=lnd-3:8081 --bitcoin.active --bitcoin.regtest --bitcoin.node=bitcoind --bitcoind.rpchost=bitcoind --bitcoind.zmqpubrawtx=bitcoind:29000 --bitcoind.zmqpubrawblock=bitcoind:29001 --bitcoind.rpcuser=cashu --bitcoind.rpcpass=cashu --noseedbackup --protocol.wumbo-channels'"
     ports:
@@ -127,5 +127,83 @@ services:
     volumes:
       - lnbits-data:/app/data
       - ./data/lnd-3:/app/lnd:uid=1000,gid=1000
+
+  mempool-web:
+    hostname: mempool-web
+    depends_on:
+      - mempool-api
+    environment:
+      FRONTEND_HTTP_PORT: "8080"
+      BACKEND_MAINNET_HTTP_HOST: "mempool-api"
+    image: mempool/frontend:latest
+    user: "1000:1000"
+    restart: on-failure
+    stop_grace_period: 20s 
+    command: "./wait-for mempool-db:3306 --timeout=720 -- nginx -g 'daemon off;'"
+    ports:
+      - 8080:8080
+
+  mempool-api:
+    hostname: mempool-api
+    depends_on:
+      - mempool-db
+      - fulcrum
+    environment:
+      MEMPOOL_NETWORK: "regtest"
+      MEMPOOL_BACKEND: "electrum"
+      ELECTRUM_HOST: "fulcrum"
+      ELECTRUM_PORT: "50001"
+      ELECTRUM_TLS_ENABLED: "false"
+      CORE_RPC_HOST: "bitcoind"
+      CORE_RPC_PORT: "18443"
+      CORE_RPC_USERNAME: "cashu"
+      CORE_RPC_PASSWORD: "cashu"
+      DATABASE_ENABLED: "true"
+      DATABASE_HOST: "mempool-db"
+      DATABASE_DATABASE: "mempool"
+      DATABASE_USERNAME: "mempool"
+      DATABASE_PASSWORD: "mempool"
+      STATISTICS_ENABLED: "true"
+    image: mempool/backend:latest
+    user: "1000:1000"
+    restart: on-failure
+    stop_grace_period: 20s
+    command: "./wait-for-it.sh mempool-db:3306 --timeout=720 --strict -- ./start.sh"
+    volumes:
+      - ./data/mempool-data:/backend/cache
+
+  mempool-db:
+    hostname: mempool-db
+    depends_on:
+      - bitcoind
+    environment:
+      MYSQL_DATABASE: "mempool"
+      MYSQL_USER: "mempool"
+      MYSQL_PASSWORD: "mempool"
+      MYSQL_ROOT_PASSWORD: "admin"
+    image: mariadb:10.5.21
+    user: "1000:1000"
+    restart: on-failure
+    stop_grace_period: 1m
+    ports:
+      - 3306:3306
+    expose:
+      - 3306
+    volumes:
+      - ./mempool/mysql/data:/var/lib/mysql        
+
+  fulcrum:
+    hostname: fulcrum
+    depends_on:
+      - bitcoind
+    build: ./mempool/fulcrum/regtest/
+    ports:
+      - 50001:50001
+      - 50002:50002
+    expose:
+      - 50001
+      - 50002
+    restart: always
+
 volumes:
   lnbits-data:
