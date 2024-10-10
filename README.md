@@ -27,6 +27,11 @@ git clone https://github.com/callebtc/cashu-regtest.git
 cd cashu-regtest
 ./start.sh  # start the regtest and also run tests
 ```
+## Stopping regtest
+Stop the regtest environment
+```
+./stop.sh # stop the regtest containers
+```
 
 # Running Nutshell on regtest
 Add this ENV variables to your `.env` file (assuming that the `cashu-regtest` directory is in `../` from the `nutshell` directory)
