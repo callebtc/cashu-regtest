@@ -2,31 +2,19 @@
 
 # Nodes
 
-Here is the complete list of nodes and services:
+Here is the complete list of nodes:
 * lnd-1: for testing your software
 * lnd-2: used for boltz backend
 * lnd-3: used for lnbits inside docker
 * clightning-1: for testing your software
-* clightning-2: used for clightning-REST
+* clightning-2: for testing your software
 * clightning-2-rest: used for clightning-REST
 * clightning-3: for tenting your software
+
+# Additional services
+
 * mempool (api|web|db): Mempool Explorer
 * fulcrum: Electrum Server
-
--mempool-web-1
--mempool-api-1
--mempool-db-1
--fulcrum
-
--lnbits-1
--clightning-2-rest-1
--clightning-1-1
--clightning-3-1
--clightning-2-1
--lnd-3-1
--lnd-1-1
--lnd-2-1
--bitcoind-1
 
 # Installing regtest 
 Get the regtest environment ready
@@ -79,16 +67,20 @@ lncli-sim 1 newaddr p2wsh
 lncli-sim 2 listpeers
 ```
 
-# urls
-* mempool: http://localhost:8080/
-* boltz api: http://localhost:9001/
+# URLs
+
+* Mempool Exploer: http://localhost:8080/
+* Boltz API: http://localhost:9001/
 * lnd-1 rest: http://localhost:8081/
 * lnbits: http://localhost:5001/
 
-# Debugging docker logs
+# Debugging Docker logs
 ```sh
 docker logs cashu-lnbits-1 -f
-docker logs cashu-boltz-1 -f
 docker logs cashu-clightning-1-1 -f
+docker logs cashu-clightning-2-1 -f
+docker logs cashu-clightning-3-1 -f
+docker logs cashu-lnd-1-1 -f
 docker logs cashu-lnd-2-1 -f
+docker logs cashu-lnd-3-1 -f
 ```
