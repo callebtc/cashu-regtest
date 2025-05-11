@@ -26,9 +26,9 @@ services:
     depends_on:
       - bitcoind
     image: boltz/c-lightning:24.08
-    entrypoint: "sh -c 'sleep 15 && lightningd --large-channels --network regtest --grpc-port 9738 --bind-addr=0.0.0.0:9736 --bitcoin-rpcconnect=bitcoind --bitcoin-rpcport=18443 --bitcoin-rpcuser=cashu --bitcoin-rpcpassword=cashu --clnrest-port=3010 --clnrest-host=0.0.0.0'"
+    entrypoint: "sh -c 'sleep 15 && lightningd --large-channels --network regtest --grpc-port 9738 --bind-addr=0.0.0.0:9735 --bitcoin-rpcconnect=bitcoind --bitcoin-rpcport=18443 --bitcoin-rpcuser=cashu --bitcoin-rpcpassword=cashu --clnrest-port=3010 --clnrest-host=0.0.0.0'"
     expose:
-      - 9736
+      - 9735
       - 3010
     volumes:
       - ./data/clightning-2:/root/.lightning/
@@ -52,7 +52,7 @@ services:
     image: boltz/c-lightning:24.08
     entrypoint: "sh -c 'sleep 15 && lightningd --large-channels --network regtest --grpc-port 9737 --bind-addr=0.0.0.0:9735 --bitcoin-rpcconnect=bitcoind --bitcoin-rpcport=18443 --bitcoin-rpcuser=cashu --bitcoin-rpcpassword=cashu  --clnrest-port=3013 --clnrest-host=0.0.0.0'"
     expose:
-      - 973
+      - 9735
     volumes:
       - ./data/clightning-3:/root/.lightning/
 
@@ -76,10 +76,10 @@ services:
       - bitcoind
     image: boltz/lnd:0.18.1-beta
     restart: on-failure
-    entrypoint: "sh -c 'sleep 20; lnd --listen=lnd-2:9736 --rpclisten=lnd-2:10009 --restlisten=lnd-2:8082 --bitcoin.active --bitcoin.regtest --bitcoin.node=bitcoind --bitcoind.rpchost=bitcoind --bitcoind.zmqpubrawtx=bitcoind:29000 --bitcoind.zmqpubrawblock=bitcoind:29001 --bitcoind.rpcuser=cashu --bitcoind.rpcpass=cashu --noseedbackup --protocol.wumbo-channels'"
+    entrypoint: "sh -c 'sleep 20; lnd --listen=lnd-2:9735 --rpclisten=lnd-2:10009 --restlisten=lnd-2:8082 --bitcoin.active --bitcoin.regtest --bitcoin.node=bitcoind --bitcoind.rpchost=bitcoind --bitcoind.zmqpubrawtx=bitcoind:29000 --bitcoind.zmqpubrawblock=bitcoind:29001 --bitcoind.rpcuser=cashu --bitcoind.rpcpass=cashu --noseedbackup --protocol.wumbo-channels'"
     expose:
       - 8082
-      - 9736
+      - 9735
       - 10009 
     volumes:
       - ./data/lnd-2:/root/.lnd/
