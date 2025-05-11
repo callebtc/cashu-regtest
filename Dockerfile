@@ -31,10 +31,6 @@ ENV DOCKER_HOST=unix:///var/run/docker.sock
 # Expose required ports
 EXPOSE 5001 8081 10009 3001 3010
 
-# Set a healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD curl -f http://localhost:5001 || exit 1
-
 # Entry point script
 COPY <<EOF /regtest/docker-entrypoint.sh
 #!/bin/bash
