@@ -39,8 +39,6 @@ services:
       - clightning-2
     image: saubyk/c-lightning-rest:0.10.7
     entrypoint: "sh -c 'sleep 35 && /sbin/tini -g -- ./docker-entrypoint.sh'"
-    ports:
-      - 3001:3001
     expose:
       - 3001
     volumes:
@@ -93,9 +91,6 @@ services:
     image: boltz/lnd:0.18.1-beta
     restart: on-failure
     entrypoint: "sh -c 'sleep 20; lnd --listen=lnd-3:9735 --rpclisten=lnd-3:10009 --restlisten=lnd-3:8081 --bitcoin.active --bitcoin.regtest --bitcoin.node=bitcoind --bitcoind.rpchost=bitcoind --bitcoind.zmqpubrawtx=bitcoind:29000 --bitcoind.zmqpubrawblock=bitcoind:29001 --bitcoind.rpcuser=cashu --bitcoind.rpcpass=cashu --noseedbackup --protocol.wumbo-channels'"
-    ports:
-      - 8081:8081
-      - 10009:10009
     expose:
       - 8081
       - 9735
@@ -120,8 +115,8 @@ services:
       LND_REST_ENDPOINT: "https://lnd-3:8081/"
       LND_REST_CERT: "./lnd/tls.cert"
       LND_REST_MACAROON: "./lnd/data/chain/bitcoin/regtest/admin.macaroon"
-    ports:
-      - 5001:5001
+    expose:
+      - 5001
     volumes:
       - lnbits-data:/app/data
       - ./data/lnd-3:/app/lnd:uid=1000,gid=1000
