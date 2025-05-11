@@ -1,6 +1,9 @@
 name: Build and Publish Docker Image
 
 on:
+  push:
+    branches:
+      - "publish-images" # TODO: change to main
   release:
     types: [published]
   workflow_dispatch:
