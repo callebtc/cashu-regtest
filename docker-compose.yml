@@ -112,9 +112,9 @@ services:
     image: lnbits/lnbits:v1.5.4
     restart: on-failure
     user: "0:0"
-    entrypoint: "sh -c 'sleep 30; /app/.venv/bin/lnbits --port 5001 --host 0.0.0.0'"
+    entrypoint: "sh -c 'sleep 30; /app/.venv/bin/lnbits'"
     environment:
-      HOST: lnbits
+      HOST: 0.0.0.0
       PORT: 5001
       DEBUG: true
       LNBITS_BACKEND_WALLET_CLASS: "LndRestWallet"
