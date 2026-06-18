@@ -56,7 +56,7 @@ for i in 1 2 3; do
   run "cln-$i channel[0].our_amount_msat" $(($balance_size * 1000)) $(lightning-cli-sim $i listfunds | jq -r ".channels[0].our_amount_msat" | sed 's/msat//g')
 done
 
-run "lnbits service status" "200" $(curl -s -o /dev/null -w "%{http_code}" "http://localhost:5001/")
+run "lnbits service status" "200" $(curl -s -L -o /dev/null -w "%{http_code}" "http://localhost:5001/")
 
 # return non-zero exit code if a test fails
 if [[ "$failed" == "true" ]]; then
@@ -73,4 +73,4 @@ else
 fi
 
 # # LNbits create a wallet
-docker exec cashu-lnbits-1 poetry run python tools/create_fake_admin.py
+docker exec cashu-lnbits-1 /app/.venv/bin/python tools/create_fake_admin.py
