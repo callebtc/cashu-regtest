@@ -74,3 +74,8 @@ fi
 
 # # LNbits create a wallet
 docker exec cashu-lnbits-1 /app/.venv/bin/python tools/create_fake_admin.py
+
+# LNbits first install setup to disable first-install redirect
+curl -s -X PUT "http://localhost:5001/api/v1/auth/first_install" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "supersecurepassword123", "password_repeat": "supersecurepassword123"}' > /dev/null
