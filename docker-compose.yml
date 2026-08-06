@@ -1,7 +1,7 @@
 services:
   bitcoind:
     hostname: bitcoind
-    image: boltz/bitcoin-core:27.1
+    image: boltz/bitcoin-core:30.3
     command: "-regtest -fallbackfee=0.00000253 -zmqpubrawtx=tcp://0.0.0.0:29000 -zmqpubrawblock=tcp://0.0.0.0:29001 -zmqpubhashblock=tcp://0.0.0.0:29002 -txindex -rpcallowip=0.0.0.0/0 -rpcbind=0.0.0.0 -rpcuser=cashu -rpcpassword=cashu -addresstype=bech32 -changetype=bech32 -dbcache=2048 -rpcworkqueue=256"
     expose:
       - 29000
