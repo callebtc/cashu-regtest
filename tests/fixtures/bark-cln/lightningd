@@ -1,0 +1,27 @@
+#!/bin/sh
+# Deterministic stand-in: hold a lock for one second after SIGTERM.
+set -eu
+mkdir /test-state/lock || { echo "CLN lock is still held" >&2; exit 42; }
+cleanup() {
+  sleep 1
+  rmdir /test-state/lock
+  touch /test-state/stopped
+  exit 0
+}
+trap cleanup TERM INT
+if [ ! -f /test-state/booted ]; then
+  echo "$$" > /test-state/bootstrap-pid
+  touch /test-state/booted
+  if [ "$SCENARIO" = early-exit ]; then
+    rmdir /test-state/lock
+    exit 23
+  fi
+  if [ "$SCENARIO" != term ]; then
+    mkdir -p /root/.lightning/regtest/hold
+    touch /root/.lightning/regtest/hold/ca.pem
+  fi
+else
+  [ -f /root/.lightning/regtest/tls-ready ]
+  touch /test-state/final-started
+fi
+while :; do sleep 0.1; done

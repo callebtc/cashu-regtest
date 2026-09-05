@@ -55,6 +55,8 @@ jobs:
       - name: Setup Bark Regtest and prove wallet payments
         run: |
           chmod -R 777 .
+          docker compose --profile bark build bark-cln
+          bash tests/bark-cln-startup.sh
           bash ./start.sh --bark
       - name: Bark failure diagnostics
         if: failure()
