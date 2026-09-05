@@ -50,3 +50,59 @@ source ./docker-scripts.sh
   wait-for-clightning-sync 1
 )
 echo 'Startup regression tests passed'
+
+(
+  export CASHU_SPARK_REGTEST=true CASHU_BARK_REGTEST=true
+  cashu-bitcoin-init() { :; }
+  cashu-lightning-sync() { :; }
+  cashu-lightning-init() { :; }
+  cashu-spark-init() { return 1; }
+  cashu-bark-init() { echo 'ERROR: continued after Spark failure' >&2; exit 99; }
+  if cashu-regtest-init; then exit 1; fi
+)
+(
+  export CASHU_SPARK_REGTEST=false CASHU_BARK_REGTEST=true
+  cashu-bitcoin-init() { :; }
+  cashu-lightning-sync() { :; }
+  cashu-lightning-init() { :; }
+  cashu-bark-init() { return 1; }
+  if cashu-regtest-init; then exit 1; fi
+)
+if bash ./start.sh --invalid-option >/dev/null 2>&1; then
+  echo 'ERROR: unknown startup option accepted' >&2
+  exit 1
+fi
+echo 'Optional profile startup regression tests passed'
+
+(
+  bitcoin-cli-sim() { :; }
+  cashu-lightning-sync() { :; }
+  wait-for-bark-lightning-height() { :; }
+  captaind-cli-sim() { echo '{"rounds":{"address":"test-address"}}'; }
+  bark-lightning-cli-sim() { echo '{"id":"bark-node"}'; }
+  lncli-sim() {
+    if [ "$2" = listchannels ]; then
+      echo '{"channels":[{"remote_pubkey":"bark-node","active":true,"capacity":"24000000","push_amount_sat":"12000000","local_balance":"11996530","remote_balance":"12000000"}]}'
+    fi
+  }
+  lightning-cli-sim() { echo '{"id":"cln-node","route":[]}'; }
+  sleep() { :; }
+  if cashu-bark-init >/dev/null 2>&1; then
+    echo 'ERROR: active channel without a gossip route was treated as ready' >&2
+    exit 1
+  fi
+)
+echo 'Bark gossip readiness regression test passed'
+
+(
+  bitcoin-cli-sim() { echo 216; }
+  lightning-cli-sim() { echo '{"blockheight":210}'; }
+  lncli-sim() { echo '{"block_height":216}'; }
+  bark-lightning-cli-sim() { echo '{"blockheight":216}'; }
+  sleep() { :; }
+  if wait-for-bark-lightning-height >/dev/null 2>&1; then
+    echo 'ERROR: stale CLN height was treated as synchronized' >&2
+    exit 1
+  fi
+)
+echo 'Bark Lightning height regression test passed'

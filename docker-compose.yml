@@ -413,6 +413,81 @@ services:
         condition: service_healthy
       spark-electrs:
         condition: service_started
+
+  bark-postgres:
+    profiles: [bark]
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: bark
+      POSTGRES_PASSWORD: regtest-bark
+    volumes:
+      - bark-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d bark"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  bark-cln:
+    profiles: [bark]
+    hostname: cln
+    image: cashu-bark-cln:26.06.6-hold-af0055b
+    pull_policy: never
+    build: ./bark/cln-build
+    entrypoint: [/bin/sh, /etc/bark/cln-entrypoint.sh]
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    volumes:
+      - bark-cln-data:/root/.lightning
+      - ./bark/cln-entrypoint.sh:/etc/bark/cln-entrypoint.sh:ro
+    networks:
+      default:
+        aliases: [cln]
+    healthcheck:
+      test: [CMD-SHELL, "test -f /root/.lightning/regtest/tls-ready && lightning-cli --regtest getinfo >/dev/null"]
+      interval: 2s
+      timeout: 5s
+      retries: 90
+    restart: on-failure
+
+  bark-server:
+    profiles: [bark]
+    image: cashu-bark:e3d4174ca08a3c97bc23e1e73aa5332d725a7689
+    pull_policy: never
+    build: ./bark/build
+    entrypoint: [/bin/sh, /etc/bark/server-entrypoint.sh]
+    ports:
+      - "127.0.0.1:3535:3535"
+    depends_on:
+      bark-postgres:
+        condition: service_healthy
+      bark-cln:
+        condition: service_healthy
+    volumes:
+      - bark-server-data:/data
+      - bark-cln-data:/cln:ro
+      - ./bark/captaind.toml:/etc/bark/captaind.toml:ro
+      - ./bark/server-entrypoint.sh:/etc/bark/server-entrypoint.sh:ro
+    healthcheck:
+      test: [CMD, captaind, --config, /etc/bark/captaind.toml, rpc, wallet]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+    restart: on-failure
+
+  bark-wallet:
+    profiles: [bark]
+    image: cashu-bark:e3d4174ca08a3c97bc23e1e73aa5332d725a7689
+    pull_policy: never
+    build: ./bark/build
+    entrypoint: [/bin/sh, -c, "exec sleep infinity"]
+    depends_on:
+      bark-server:
+        condition: service_healthy
+    volumes:
+      - bark-wallet-data:/wallets
+
 volumes:
   lnbits-data:
   spark-postgres-data:
@@ -420,3 +495,7 @@ volumes:
   spark-tls-certs:
   spark-ldk-data:
   spark-ssp-data:
+  bark-postgres-data:
+  bark-cln-data:
+  bark-server-data:
+  bark-wallet-data:

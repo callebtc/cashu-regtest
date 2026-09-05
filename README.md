@@ -23,6 +23,61 @@ cd cashu-regtest
 ./start.sh  # start the regtest and also run tests
 ```
 
+## Optional Bark / Ark regtest
+
+```sh
+./start.sh --bark
+# Or enable both optional L2 stacks:
+./start.sh --spark --bark
+```
+
+The Bark profile adds Second's `captaind` Ark server, private PostgreSQL,
+and a dedicated Core Lightning node with Boltz's hold-invoice plugin. It opens
+a 24,000,000-sat channel from `lnd-1` with a 12,000,000-sat push and funds the
+server's onchain wallet. Startup waits for channel gossip routes, and the
+payment test waits for every Lightning node's exact Bitcoin block height to
+avoid stale-height HTLC expiry failures. Core-only `./start.sh` is unchanged.
+
+The Bark checks also require `jq`, `xxd`, and `openssl` on the host.
+The first native ARM64/AMD64 source build can take tens of minutes. The wallet
+and server use the same pinned Bark revision; no local upstream checkout is
+needed:
+
+* Bark / captaind (MIT): `ark-bitcoin/bark@e3d4174ca08a3c97bc23e1e73aa5332d725a7689`
+* Hold plugin: `BoltzExchange/hold@af0055b132f3b9f24d0b1d478a15005fcf8f014f` (v0.3.3)
+* Dedicated CLN: `elementsproject/lightningd:v26.06.6`
+
+Startup creates a temporary Bark wallet, receives 1,000,000 confirmed Bitcoin
+sats, sends an onchain payment, boards 250,000 sats into Ark, pays 3,000-sat
+invoices on both LND and CLN, and receives 5,000-sat Lightning payments from
+each. It checks settlement and payment hashes/preimages, credits after fees,
+then confirms a 20,000-sat cooperative Ark-to-Bitcoin offboard. Normal Bark and
+Lightning forwarding fees remain enabled. This tests cooperative operation,
+not unilateral exits or server-failure recovery. A separate 90-minute CI job
+runs the same acceptance script; the core job keeps its 10-minute limit.
+
+Only the public Bark RPC is published, at `http://127.0.0.1:3535`.
+PostgreSQL, CLN, hold gRPC, and the unauthenticated admin RPC remain private.
+External Bark wallets should use the pinned version, `--regtest`, that Ark URL,
+and a reachable regtest Bitcoin RPC or Esplora endpoint. The bundled wallet
+already has access to Bitcoin Core inside Docker:
+
+```sh
+source ./docker-scripts.sh
+bark-cli-sim balance
+bark-cli-sim onchain address
+bark-cli-sim lightning invoice '5000 sat'
+# After a payer starts paying the hold invoice, claim it to settle:
+bark-cli-sim lightning claim '<invoice>' --wait
+captaind-cli-sim wallet
+bark-lightning-cli-sim getinfo
+```
+
+All Bark state, including the temporary wallet mnemonic, lives in Docker
+volumes and is deleted by the existing full-start / `down --volumes` lifecycle.
+Every full start creates new identities. Credentials and disabled receive
+anti-DoS requirements are for disposable regtest only; never use real funds.
+
 ## Optional Spark SO/SSP regtest
 
 Start the core environment plus the Spark Operator and Service Provider stack:

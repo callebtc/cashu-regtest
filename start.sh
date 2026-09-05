@@ -1,17 +1,25 @@
 #!/bin/bash
 spark_enabled="false"
-case "${1:-}" in
-  "") ;;
+bark_enabled="false"
+export COMPOSE_PROFILES=""
+for arg in "$@"; do
+case "$arg" in
   --spark)
     spark_enabled="true"
-    export CASHU_SPARK_REGTEST="true"
-    export COMPOSE_PROFILES="spark"
+    export COMPOSE_PROFILES="${COMPOSE_PROFILES:+$COMPOSE_PROFILES,}spark"
+    ;;
+  --bark)
+    bark_enabled="true"
+    export COMPOSE_PROFILES="${COMPOSE_PROFILES:+$COMPOSE_PROFILES,}bark"
     ;;
   *)
-    echo "usage: $0 [--spark]" >&2
+    echo "usage: $0 [--spark] [--bark]" >&2
     exit 2
     ;;
 esac
+done
+export CASHU_SPARK_REGTEST="$spark_enabled"
+export CASHU_BARK_REGTEST="$bark_enabled"
 
 print_success() {
   printf "\033[;1;32mPASSED\033[;0m $1\n"
@@ -41,7 +49,7 @@ balance_size=12000000 # 0.012 btc
 
 source docker-scripts.sh
 
-spark_failure_logs(){
+optional_failure_logs(){
   status=$?
   if [ "$status" -ne 0 ] && [ "$spark_enabled" = "true" ]; then
     docker compose ps -a >&2 || true
@@ -50,15 +58,23 @@ spark_failure_logs(){
       spark-postgres spark-operator-0 spark-operator-1 spark-operator-2 \
       spark-ldk spark-ssp spark-electrs >&2 || true
   fi
+  if [ "$status" -ne 0 ] && [ "$bark_enabled" = "true" ]; then
+    docker compose ps -a >&2 || true
+    docker compose logs --tail=250 bark-server bark-cln bark-postgres bitcoind lnd-1 >&2 || true
+  fi
   exit "$status"
 }
-trap spark_failure_logs EXIT
+trap optional_failure_logs EXIT
 
 cashu-regtest-start || exit 1
 if [ "$spark_enabled" = "true" ]; then
   cashu-spark-e2e || exit 1
   cashu-lightning-sync || exit 1
   blockheight=216
+fi
+if [ "$bark_enabled" = "true" ]; then
+  cashu-lightning-sync || exit 1
+  blockheight=$((blockheight + BARK_BLOCKS_MINED))
 fi
 echo "=================================="
 printf "\033[;1;36mregtest started! starting tests...\033[;0m\n"
@@ -74,6 +90,9 @@ for i in 1 2 3; do
       channel_count=6
     else
       channel_count=5
+    fi
+    if [ "$bark_enabled" = "true" ]; then
+      channel_count=$((channel_count + 1))
     fi
   elif [[ "$i" == "3" ]]; then
     channel_count=3
@@ -104,6 +123,9 @@ if [ "$spark_enabled" = "true" ]; then
 fi
 
 # return non-zero exit code if a test fails
+if [ "$failed" = "false" ] && [ "$bark_enabled" = "true" ]; then
+  cashu-bark-e2e || exit 1
+fi
 if [[ "$failed" == "true" ]]; then
   echo ""
   echo "=================================="
