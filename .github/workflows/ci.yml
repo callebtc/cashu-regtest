@@ -18,3 +18,13 @@ jobs:
         run: |
           chmod -R 777 .
           bash ./start.sh
+
+  spark-regtest:
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Spark Regtest
+        run: |
+          chmod -R 777 .
+          bash ./start.sh --spark

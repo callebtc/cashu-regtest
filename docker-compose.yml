@@ -1,3 +1,27 @@
+x-spark-operator-common: &spark-operator-common
+  profiles:
+    - spark
+  image: cashu-spark-operator:0b3a32a05c9ac06cc411683551dd1f1bde9d0caa-open-ssp-rpc
+  build:
+    context: ./spark/operator-build
+    dockerfile: Dockerfile
+  pull_policy: never
+  depends_on:
+    spark-postgres:
+      condition: service_healthy
+    bitcoind:
+      condition: service_healthy
+    spark-cert-init:
+      condition: service_completed_successfully
+  restart: unless-stopped
+  entrypoint: ["/bin/sh", "-c"]
+  volumes:
+    - ./spark/operator-entrypoint.sh:/opt/spark/entrypoint.sh:ro
+    - ./spark/operators.json:/opt/spark/config.json:ro
+    - ./spark/operator.config.yaml:/opt/spark/operator.config.yaml:ro
+    - ./spark/keys:/opt/spark/keys:ro
+    - spark-tls-certs:/opt/spark/tls:ro
+
 services:
   bitcoind:
     hostname: bitcoind
@@ -9,6 +33,11 @@ services:
       - 29002
       - 18443
       - 18444
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "-regtest", "-rpcuser=cashu", "-rpcpassword=cashu", "-rpcport=18443", "getblockchaininfo"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
 
   clightning-1:
     hostname: clightning-1
@@ -127,5 +156,267 @@ services:
     volumes:
       - lnbits-data:/app/data
       - ./data/lnd-3:/app/lnd:uid=1000,gid=1000
+
+  spark-cert-init:
+    profiles:
+      - spark
+    image: alpine:3.20
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        apk add --no-cache openssl > /dev/null
+        for i in 0 1 2; do
+          key="/tls/server_$${i}.key"
+          cert="/tls/server_$${i}.crt"
+          if [ -f "$$key" ] && [ -f "$$cert" ] \
+            && openssl x509 -in "$$cert" -noout -ext basicConstraints 2>/dev/null \
+              | grep -q "CA:FALSE"; then
+            continue
+          fi
+          openssl genrsa -out "$$key.tmp" 2048 2>/dev/null
+          openssl req -new -x509 \
+            -key "$$key.tmp" -out "$$cert.tmp" \
+            -days 3650 \
+            -subj "/CN=spark-operator-$${i}" \
+            -addext "subjectAltName = DNS:spark-operator-$${i},DNS:spark-operator-$${i}.minikube.local,DNS:localhost" \
+            -addext "basicConstraints = critical,CA:FALSE" \
+            -addext "keyUsage = critical,digitalSignature,keyEncipherment" \
+            -addext "extendedKeyUsage = serverAuth"
+          mv "$$key.tmp" "$$key"
+          mv "$$cert.tmp" "$$cert"
+        done
+    volumes:
+      - spark-tls-certs:/tls
+
+  spark-postgres:
+    profiles:
+      - spark
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - spark-postgres-data:/var/lib/postgresql/data
+      - ./spark/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  spark-electrs:
+    profiles:
+      - spark
+    image: cashu-spark-electrs:5b8819039dc1ad1dddf2c3c293ec8825975680f8
+    build:
+      context: ./spark/electrs-build
+      dockerfile: Dockerfile
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    command:
+      - --network=regtest
+      - --jsonrpc-import
+      - --cookie=cashu:cashu
+      - --daemon-rpc-addr=bitcoind:18443
+      - --db-dir=/electrs
+      - --electrum-rpc-addr=0.0.0.0:60401
+      - --http-addr=0.0.0.0:3002
+      - --monitoring-addr=0.0.0.0:24224
+      - --cors=*
+      - --address-search
+    ports:
+      - "127.0.0.1:30000:3002"
+    volumes:
+      - spark-electrs-data:/electrs
+    restart: unless-stopped
+
+  spark-operator-0:
+    <<: *spark-operator-common
+    command:
+      - /opt/spark/entrypoint.sh 0
+    ports:
+      - "127.0.0.1:8535:8535"
+    networks:
+      default:
+        aliases:
+          - spark-operator-0.minikube.local
+
+  spark-operator-1:
+    <<: *spark-operator-common
+    command:
+      - /opt/spark/entrypoint.sh 1
+    ports:
+      - "127.0.0.1:8536:8535"
+    networks:
+      default:
+        aliases:
+          - spark-operator-1.minikube.local
+
+  spark-operator-2:
+    <<: *spark-operator-common
+    command:
+      - /opt/spark/entrypoint.sh 2
+    ports:
+      - "127.0.0.1:8537:8535"
+    networks:
+      default:
+        aliases:
+          - spark-operator-2.minikube.local
+
+  spark-ldk:
+    profiles:
+      - spark
+    image: cashu-ldk-server:6d6d810714706c225ce7effc2163eff6a1b54221
+    build:
+      context: "https://github.com/lightningdevkit/ldk-server.git?ref=6d6d810714706c225ce7effc2163eff6a1b54221&checksum=6d6d810714706c225ce7effc2163eff6a1b54221"
+      dockerfile_inline: |
+        FROM rust:1.92-slim-bookworm AS builder
+        WORKDIR /app
+        RUN apt-get update && apt-get install -y --no-install-recommends \
+              build-essential pkg-config protobuf-compiler \
+         && rm -rf /var/lib/apt/lists/*
+        COPY Cargo.toml Cargo.lock ./
+        COPY ldk-server/Cargo.toml ldk-server/Cargo.toml
+        COPY ldk-server-cli/Cargo.toml ldk-server-cli/Cargo.toml
+        COPY ldk-server-client/Cargo.toml ldk-server-client/Cargo.toml
+        COPY ldk-server-grpc/Cargo.toml ldk-server-grpc/Cargo.toml
+        COPY ldk-server-grpc/build.rs ldk-server-grpc/build.rs
+        COPY ldk-server-mcp/Cargo.toml ldk-server-mcp/Cargo.toml
+        RUN mkdir -p ldk-server/src ldk-server-cli/src \
+              ldk-server-client/src ldk-server-grpc/src ldk-server-mcp/src \
+         && echo 'fn main() {}' > ldk-server/src/main.rs \
+         && echo 'fn main() {}' > ldk-server-cli/src/main.rs \
+         && echo '' > ldk-server-client/src/lib.rs \
+         && echo '' > ldk-server-grpc/src/lib.rs \
+         && echo 'fn main() {}' > ldk-server-mcp/src/main.rs \
+         && cargo build --release --locked -p ldk-server -p ldk-server-cli
+        COPY . .
+        RUN touch ldk-server/src/main.rs ldk-server-cli/src/main.rs \
+              ldk-server-client/src/lib.rs ldk-server-grpc/src/lib.rs \
+         && cargo build --release --locked -p ldk-server -p ldk-server-cli
+
+        FROM debian:bookworm-slim
+        RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+         && rm -rf /var/lib/apt/lists/*
+        COPY --from=builder /app/target/release/ldk-server /usr/local/bin/ldk-server
+        COPY --from=builder /app/target/release/ldk-server-cli /usr/local/bin/ldk-server-cli
+        ENV LDK_SERVER_NODE_GRPC_SERVICE_ADDRESS=0.0.0.0:3536
+        EXPOSE 9735 3536
+        ENTRYPOINT ["ldk-server"]
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ldk-server /config.toml &
+        pid=$$!
+        trap 'kill -TERM "$$pid"' TERM INT
+        while kill -0 "$$pid" 2>/dev/null; do
+          if [ -f /data/regtest/api_key ] && [ -f /data/tls.crt ]; then
+            chmod 0444 /data/regtest/api_key /data/tls.crt
+            break
+          fi
+          sleep 1
+        done
+        wait "$$pid"
+    ports:
+      - "127.0.0.1:3536:3536"
+    expose:
+      - 9735
+    healthcheck:
+      test: ["CMD-SHELL", "test -r /data/regtest/api_key && ldk-server-cli --base-url localhost:3536 --api-key $$(od -A n -t x1 /data/regtest/api_key | tr -d ' \\n') --tls-cert /data/tls.crt get-node-info >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    volumes:
+      - spark-ldk-data:/data
+      - ./spark/ldk-server.toml:/config.toml:ro
+    restart: unless-stopped
+
+  spark-ssp:
+    profiles:
+      - spark
+    image: cashu-open-ssp:04f8330b0bd76335c3b9798b73f2fc0a3622d7d5
+    build:
+      context: "https://github.com/benthecarman/open-ssp.git?ref=04f8330b0bd76335c3b9798b73f2fc0a3622d7d5&checksum=04f8330b0bd76335c3b9798b73f2fc0a3622d7d5"
+      dockerfile: ssp.Dockerfile
+    depends_on:
+      spark-operator-0:
+        condition: service_started
+      spark-operator-1:
+        condition: service_started
+      spark-operator-2:
+        condition: service_started
+      spark-ldk:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5000:5000"
+    healthcheck:
+      test: ["CMD", "open-ssp", "healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+    environment:
+      SSP_LISTEN_ADDR: 0.0.0.0:5000
+      SSP_NETWORK: REGTEST
+      SSP_DATA_DIR: /data
+      SSP_PUBLIC_URL: http://spark-ssp:5000
+      SPARK_MNEMONIC_FILE: /data/spark.mnemonic
+      SPARK_MNEMONIC_REQUIRED: "0"
+      SO_HOSTS: spark-operator-0.minikube.local:8535,spark-operator-1.minikube.local:8535,spark-operator-2.minikube.local:8535
+      SO_IDENTITY_PUBKEYS: 0322ca18fc489ae25418a0e768273c2c61cabb823edfb14feb891e9bec62016510,0341727a6c41b168f07eb50865ab8c397a53c7eef628ac1020956b705e43b6cb27,0305ab8d485cc752394de4981f8a5ae004f2becfea6f432c9a59d5022d8764f0a6
+      SO_CERT_FILES: /tls/server_0.crt,/tls/server_1.crt,/tls/server_2.crt
+      SPARK_ADMIN_TOKEN: regtest-spark-admin-token
+      LDK_GRPC_ADDR: spark-ldk:3536
+      LDK_API_KEY_FILE: /ldk-data/regtest/api_key
+      LDK_TLS_CERT_FILE: /ldk-data/tls.crt
+      SSP_SWAP_FEE_SATS: "0"
+      MAX_SWAP_TOTAL_SATS: "1000000"
+      SSP_FROST_THRESHOLD: "2"
+      SSP_FROST_OPERATORS: '[{"id":0,"identifier":"0000000000000000000000000000000000000000000000000000000000000001","identityPublicKey":"0322ca18fc489ae25418a0e768273c2c61cabb823edfb14feb891e9bec62016510"},{"id":1,"identifier":"0000000000000000000000000000000000000000000000000000000000000002","identityPublicKey":"0341727a6c41b168f07eb50865ab8c397a53c7eef628ac1020956b705e43b6cb27"},{"id":2,"identifier":"0000000000000000000000000000000000000000000000000000000000000003","identityPublicKey":"0305ab8d485cc752394de4981f8a5ae004f2becfea6f432c9a59d5022d8764f0a6"}]'
+      RUST_LOG: info
+    volumes:
+      - spark-ssp-data:/data
+      - spark-ldk-data:/ldk-data:ro
+      - spark-tls-certs:/tls:ro
+    restart: unless-stopped
+
+  spark-test:
+    profiles:
+      - spark-test
+    image: cashu-spark-test:06614d2e3535385f15aef3749b2c8a780f679ebc
+    build:
+      context: ./spark/test
+      dockerfile: Dockerfile
+    environment:
+      SPARK_SDK_DIST: /opt/spark-sdk/sdks/js/packages/spark-sdk/dist/index.node.js
+      SSP_BASE_URL: http://spark-ssp:5000
+      BITCOIN_RPC_URL: http://bitcoind:18443
+      BITCOIN_RPC_USER: cashu
+      BITCOIN_RPC_PASSWORD: cashu
+      BITCOIN_RPC_WALLET: cashu
+      ELECTRS_URL: http://spark-electrs:3002
+      LND_REST_HOST: lnd-1
+      LND_REST_PORT: "8081"
+      LND_DATA_DIR: /lnd
+      SPARK_DANGEROUSLY_DISABLE_TLS_VERIFICATION: "1"
+    volumes:
+      - ./data/lnd-1:/lnd:ro
+    depends_on:
+      spark-ssp:
+        condition: service_healthy
+      spark-electrs:
+        condition: service_started
 volumes:
   lnbits-data:
+  spark-postgres-data:
+  spark-electrs-data:
+  spark-tls-certs:
+  spark-ldk-data:
+  spark-ssp-data:

@@ -1,4 +1,18 @@
 #!/bin/bash
+spark_enabled="false"
+case "${1:-}" in
+  "") ;;
+  --spark)
+    spark_enabled="true"
+    export CASHU_SPARK_REGTEST="true"
+    export COMPOSE_PROFILES="spark"
+    ;;
+  *)
+    echo "usage: $0 [--spark]" >&2
+    exit 2
+    ;;
+esac
+
 print_success() {
   printf "\033[;1;32mPASSED\033[;0m $1\n"
 }
@@ -26,7 +40,25 @@ channel_size=24000000 # 0.024 btc
 balance_size=12000000 # 0.012 btc
 
 source docker-scripts.sh
-cashu-regtest-start
+
+spark_failure_logs(){
+  status=$?
+  if [ "$status" -ne 0 ] && [ "$spark_enabled" = "true" ]; then
+    docker compose ps -a >&2 || true
+    docker compose logs --tail=250 \
+      spark-postgres spark-operator-0 spark-operator-1 spark-operator-2 \
+      spark-ldk spark-ssp spark-electrs >&2 || true
+  fi
+  exit "$status"
+}
+trap spark_failure_logs EXIT
+
+cashu-regtest-start || exit 1
+if [ "$spark_enabled" = "true" ]; then
+  cashu-spark-e2e || exit 1
+  cashu-lightning-sync || exit 1
+  blockheight=216
+fi
 echo "=================================="
 printf "\033[;1;36mregtest started! starting tests...\033[;0m\n"
 echo "=================================="
@@ -37,7 +69,11 @@ for i in 1 2 3; do
   run "lnd-$i utxo count" $utxos $(lncli-sim $i listunspent | jq -r ".utxos | length")
   run "lnd-$i .block_height" $blockheight $(lncli-sim $i getinfo | jq -r ".block_height")
   if [[ "$i" == "1" ]]; then
-    channel_count=5
+    if [ "$spark_enabled" = "true" ]; then
+      channel_count=6
+    else
+      channel_count=5
+    fi
   elif [[ "$i" == "3" ]]; then
     channel_count=3
   else 
@@ -57,6 +93,14 @@ for i in 1 2 3; do
 done
 
 run "lnbits service status" "200" $(curl -s -L -o /dev/null -w "%{http_code}" "http://localhost:5001/")
+
+if [ "$spark_enabled" = "true" ]; then
+  run "open-ssp service status" "200" $(curl -s -L -o /dev/null -w "%{http_code}" "http://127.0.0.1:5000/health")
+  run "open-ssp Lightning mode" "live" $(curl --fail --silent \
+    -H "Authorization: Bearer $SPARK_ADMIN_TOKEN" \
+    http://127.0.0.1:5000/status | jq -r '.ldk_mode')
+  run "Spark ldk-server channels" "1" $(ldk-cli-sim list-channels | jq -r '[.channels[]? | select(.is_channel_ready == true)] | length')
+fi
 
 # return non-zero exit code if a test fails
 if [[ "$failed" == "true" ]]; then
