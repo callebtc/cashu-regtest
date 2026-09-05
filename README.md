@@ -1,5 +1,20 @@
 ![TESTS](https://github.com/lnbits/legend-regtest-enviroment/actions/workflows/ci.yml/badge.svg)
 
+# Node versions
+
+Pinned stable releases (checked 2026-09-05):
+
+| Node | Release |
+| --- | --- |
+| Bitcoin Core | [31.1](https://github.com/bitcoin/bitcoin/releases/tag/v31.1) |
+| LND (all three nodes) | [0.21.3-beta](https://github.com/lightningnetwork/lnd/releases/tag/v0.21.3-beta) |
+| Core Lightning (core nodes and Bark) | [26.06.7](https://github.com/ElementsProject/lightning/releases/tag/v26.06.7) |
+
+Images are pinned by multiarchitecture manifest digest for AMD64 and ARM64.
+LND and CLN use official upstream images. CLN is pinned to the corrected
+26.06.7 manifest documented in its release notes, not the earlier incorrect
+image published under that tag. Bark retains its pinned hold-invoice plugin.
+
 # nodes
 * lnd-1: for testing your software
 * lnd-2: used for boltz backend
@@ -52,7 +67,7 @@ needed:
 
 * Bark / captaind (MIT): `ark-bitcoin/bark@e3d4174ca08a3c97bc23e1e73aa5332d725a7689`
 * Hold plugin: `BoltzExchange/hold@af0055b132f3b9f24d0b1d478a15005fcf8f014f` (v0.3.3)
-* Dedicated CLN: `elementsproject/lightningd:v26.06.6`
+* Dedicated CLN: `elementsproject/lightningd:v26.06.7` (corrected digest pinned)
 
 Startup creates a temporary Bark wallet, receives 1,000,000 confirmed Bitcoin
 sats, sends an onchain payment, boards 250,000 sats into Ark, pays 3,000-sat
