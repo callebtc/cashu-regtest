@@ -1,6 +1,7 @@
 #!/bin/bash
 spark_enabled="false"
 bark_enabled="false"
+arkade_enabled="false"
 export COMPOSE_PROFILES=""
 for arg in "$@"; do
 case "$arg" in
@@ -12,8 +13,12 @@ case "$arg" in
     bark_enabled="true"
     export COMPOSE_PROFILES="${COMPOSE_PROFILES:+$COMPOSE_PROFILES,}bark"
     ;;
+  --arkade)
+    arkade_enabled="true"
+    export COMPOSE_PROFILES="${COMPOSE_PROFILES:+$COMPOSE_PROFILES,}arkade"
+    ;;
   *)
-    echo "usage: $0 [--spark] [--bark]" >&2
+    echo "usage: $0 [--spark] [--bark] [--arkade]" >&2
     exit 2
     ;;
 esac
@@ -51,6 +56,10 @@ source docker-scripts.sh
 
 optional_failure_logs(){
   status=$?
+  if [ "$status" -ne 0 ] && [ "$arkade_enabled" = "true" ]; then
+    docker compose --profile "*" ps -a >&2 || true
+    docker compose --profile "*" logs --tail=150 arkade-operator arkade-operator-wallet arkade-fulmine arkade-boltz-backend arkade-nbxplorer bitcoind lnd-2 >&2 || true
+  fi
   if [ "$status" -ne 0 ] && [ "$spark_enabled" = "true" ]; then
     docker compose ps -a >&2 || true
     docker compose logs --tail=250 \
@@ -125,6 +134,12 @@ fi
 # return non-zero exit code if a test fails
 if [ "$failed" = "false" ] && [ "$bark_enabled" = "true" ]; then
   cashu-bark-e2e || exit 1
+fi
+if [ "$failed" = "false" ] && [ "$arkade_enabled" = "true" ]; then
+  docker compose --profile arkade-test run --rm --build --no-deps arkade-test regtest/setup.mjs || exit 1
+  # Start Lightning swaps only after their wallets are initialized and funded.
+  docker compose --profile arkade --profile arkade-late up -d arkade-boltz || exit 1
+  docker compose --profile arkade-test run --rm --no-deps arkade-test regtest/e2e.mjs || exit 1
 fi
 if [[ "$failed" == "true" ]]; then
   echo ""
