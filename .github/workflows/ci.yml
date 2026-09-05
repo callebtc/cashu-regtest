@@ -29,3 +29,20 @@ jobs:
         run: |
           chmod -R 777 .
           bash ./start.sh --spark
+
+  bark-regtest:
+    runs-on: "ubuntu-latest"
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Bark Regtest and prove wallet payments
+        run: |
+          chmod -R 777 .
+          bash ./start.sh --bark
+      - name: Bark failure diagnostics
+        if: failure()
+        env:
+          COMPOSE_PROJECT_NAME: cashu
+        run: |
+          docker compose --profile bark ps -a
+          docker compose --profile bark logs --tail=250 bark-server bark-cln bark-postgres bitcoind lnd-1
