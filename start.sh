@@ -47,7 +47,7 @@ run(){
 }
 
 failed="false"
-blockheight=201
+blockheight=210
 utxos=3
 channel_size=24000000 # 0.024 btc
 balance_size=12000000 # 0.012 btc
@@ -56,6 +56,10 @@ source docker-scripts.sh
 
 optional_failure_logs(){
   status=$?
+  if [ "$status" -ne 0 ]; then
+    docker compose logs --tail=150 ldk bitcoind lnd-1 lnd-2 lnd-3 \
+      clightning-1 clightning-2 clightning-3 >&2 || true
+  fi
   if [ "$status" -ne 0 ] && [ "$arkade_enabled" = "true" ]; then
     docker compose --profile "*" ps -a >&2 || true
     docker compose --profile "*" logs --tail=150 arkade-operator arkade-operator-wallet arkade-fulmine arkade-boltz-backend arkade-nbxplorer bitcoind lnd-2 >&2 || true
@@ -65,7 +69,7 @@ optional_failure_logs(){
     docker compose logs --tail=250 \
       bitcoind clightning-1 clightning-2 clightning-3 \
       spark-postgres spark-operator-0 spark-operator-1 spark-operator-2 \
-      spark-ldk spark-ssp spark-electrs >&2 || true
+      ldk spark-ssp spark-electrs >&2 || true
   fi
   if [ "$status" -ne 0 ] && [ "$bark_enabled" = "true" ]; then
     docker compose ps -a >&2 || true
@@ -95,18 +99,14 @@ for i in 1 2 3; do
   run "lnd-$i utxo count" $utxos $(lncli-sim $i listunspent | jq -r ".utxos | length")
   run "lnd-$i .block_height" $blockheight $(lncli-sim $i getinfo | jq -r ".block_height")
   if [[ "$i" == "1" ]]; then
-    if [ "$spark_enabled" = "true" ]; then
-      channel_count=6
-    else
-      channel_count=5
-    fi
+    channel_count=6
     if [ "$bark_enabled" = "true" ]; then
       channel_count=$((channel_count + 1))
     fi
   elif [[ "$i" == "3" ]]; then
-    channel_count=3
+    channel_count=4
   else 
-    channel_count=2
+    channel_count=3
   fi
   run "lnd-$i openchannels" $channel_count $(lncli-sim $i listchannels | jq -r ".channels | length")
   run "lnd-$i .channels[0].capacity" $channel_size $(lncli-sim $i listchannels | jq -r ".channels[0].capacity")
@@ -115,7 +115,7 @@ done
 for i in 1 2 3; do
   # run "cln-$i blockheight" $blockheight $(lightning-cli-sim $i getinfo | jq -r ".blockheight")
   run "cln-$i utxo count" $utxos $(lightning-cli-sim $i listfunds | jq -r ".outputs | length")
-  run "cln-$i openchannels" 2 $(lightning-cli-sim $i getinfo | jq -r ".num_active_channels")
+  run "cln-$i openchannels" 3 $(lightning-cli-sim $i getinfo | jq -r ".num_active_channels")
   run "cln-$i channel[0].state" "CHANNELD_NORMAL" $(lightning-cli-sim $i listfunds | jq -r ".channels[0].state")
   run "cln-$i channel[0].amount_msat" $(($channel_size * 1000)) $(lightning-cli-sim $i listfunds | jq -r ".channels[0].amount_msat" | sed 's/msat//g')
   run "cln-$i channel[0].our_amount_msat" $(($balance_size * 1000)) $(lightning-cli-sim $i listfunds | jq -r ".channels[0].our_amount_msat" | sed 's/msat//g')
@@ -128,10 +128,13 @@ if [ "$spark_enabled" = "true" ]; then
   run "open-ssp Lightning mode" "live" $(curl --fail --silent \
     -H "Authorization: Bearer $SPARK_ADMIN_TOKEN" \
     http://127.0.0.1:5000/status | jq -r '.ldk_mode')
-  run "Spark ldk-server channels" "1" $(ldk-cli-sim list-channels | jq -r '[.channels[]? | select(.is_channel_ready == true)] | length')
 fi
+run "LDK ready channels" "6" $(ldk-cli-sim list-channels | jq -r '[.channels[]? | select(.is_channel_ready == true)] | length')
 
 # return non-zero exit code if a test fails
+if [ "$failed" = "false" ]; then
+  bash ldk/e2e.sh || exit 1
+fi
 if [ "$failed" = "false" ] && [ "$bark_enabled" = "true" ]; then
   cashu-bark-e2e || exit 1
 fi

@@ -21,10 +21,40 @@ image published under that tag. Bark retains its pinned hold-invoice plugin.
 * lnd-3: used for lnbits inside docker
 * cln-1: for testing your software
 * cln-2: used for clightning-REST
+* cln-3: for testing your software
+* ldk: LDK Node, running through the official `ldk-server` daemon
 
 The optional Spark profile also runs three Spark Operators (a 2-of-3
-threshold), an `open-ssp` provider, Electrs, and an `ldk-server` Lightning
-node connected to `lnd-1`.
+threshold), an `open-ssp` provider, and Electrs. Its Lightning backend shares
+the default LDK node.
+
+## Default LDK Node
+
+Plain `./start.sh` runs Bitcoin Core, three LND nodes, three CLN nodes, and
+one [LDK Node](https://github.com/lightningdevkit/ldk-node). LDK Node is a
+library; the official [ldk-server](https://github.com/lightningdevkit/ldk-server)
+provides its daemon and authenticated CLI. The source build pins server
+`6d6d810714706c225ce7effc2163eff6a1b54221`, which pins LDK Node
+`056447c28221be02c3d39f8c6ae430a67ebbd850` (MIT/Apache-2.0).
+
+LDK opens six public 24,000,000-sat channels, one to each LND and CLN node,
+pushing 12,000,000 sats to each peer. Startup funds six confirmed Bitcoin
+UTXOs, waits for every funding transaction before mining, then checks both
+channel readiness and exact chain height. The default baseline is height
+210, with LND channel counts 6/3/4 and three channels per CLN node.
+
+Every start tests twelve real payments: LDK pays each peer 3,000 sats and
+each peer pays LDK 5,000 sats. Both sides must report settlement with matching
+payment hashes and preimages. These tests run after initial balance checks
+and leave the resulting payment history available for inspection.
+
+The first native ARM64/AMD64 Rust build can take tens of minutes; CI jobs
+allow 90 minutes. Host test dependencies are `jq`, `xxd`, and `openssl`.
+LDK's gRPC endpoint is published only on loopback port 3536; Lightning P2P
+is available inside Docker at `ldk:9735`. `ldk-cli-sim` reads the generated
+API key and TLS certificate automatically. Its wallet, channels, and credentials
+live in the `ldk-data` Docker volume and are reset by a full start, like the
+rest of this disposable environment. Do not use real funds.
 
 # Installing regtest 
 get the regtest environment ready
@@ -76,7 +106,7 @@ each. It checks settlement and payment hashes/preimages, credits after fees,
 then confirms a 20,000-sat cooperative Ark-to-Bitcoin offboard. Normal Bark and
 Lightning forwarding fees remain enabled. This tests cooperative operation,
 not unilateral exits or server-failure recovery. A separate 90-minute CI job
-runs the same acceptance script; the core job keeps its 10-minute limit.
+runs the same acceptance script; all jobs allow the default LDK source build.
 
 Only the public Bark RPC is published, at `http://127.0.0.1:3535`.
 PostgreSQL, CLN, hold gRPC, and the unauthenticated admin RPC remain private.
@@ -110,7 +140,7 @@ Start the core environment plus the Spark Operator and Service Provider stack:
 
 The Spark path builds its upstream components from pinned Git commits. The
 first build can take 30-90 minutes; later runs reuse Docker's build cache. It
-then creates balanced Lightning liquidity between `lnd-1` and `ldk-server`,
+uses the default LDK node's balanced Lightning channels,
 funds the SSP's Spark wallet, and tests both a Spark-to-Lightning payment and a
 Lightning-to-Spark payment through the real SDK.
 
@@ -222,7 +252,7 @@ lightning-cli-sim 3 getinfo # use node 3
 lncli-sim 1 newaddr p2wsh
 lncli-sim 2 listpeers
 
-# use the optional Spark ldk-server
+# use the default LDK Node daemon
 ldk-cli-sim get-node-info
 ldk-cli-sim list-channels
 ```
@@ -235,7 +265,7 @@ ldk-cli-sim list-channels
 * Spark SSP: http://localhost:5000/ (with `--spark`)
 * Spark Operators: https://localhost:8535-8537/ (with `--spark`)
 * Spark Esplora: http://localhost:30000/ (with `--spark`)
-* Spark ldk-server gRPC: https://localhost:3536/ (with `--spark`)
+* LDK Node gRPC: https://localhost:3536/ (always available; TLS and API key required)
 
 # debugging docker logs
 ```sh
@@ -244,5 +274,5 @@ docker logs cashu-boltz-1 -f
 docker logs cashu-clightning-1-1 -f
 docker logs cashu-lnd-2-1 -f
 docker logs cashu-spark-ssp-1 -f
-docker logs cashu-spark-ldk-1 -f
+docker logs cashu-ldk-1 -f
 ```
