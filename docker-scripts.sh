@@ -5,7 +5,7 @@ SPARK_ADMIN_TOKEN=regtest-spark-admin-token
 . ./bark/scripts.sh
 
 bitcoin-cli-sim() {
-  docker exec cashu-bitcoind-1 bitcoin-cli -rpcuser=cashu -rpcpassword=cashu -regtest "$@"
+  docker exec cashu-bitcoind-1 bitcoin-cli -rpcuser=cashu -rpcpassword=cashu -regtest -rpcwallet=cashu "$@"
 }
 
 # args(i, cmd)
@@ -89,7 +89,7 @@ cashu-regtest-start-log(){
 }
 
 cashu-regtest-stop(){
-  docker compose --profile spark --profile spark-test --profile bark down --volumes || return 1
+  docker compose --profile "*" down --volumes || return 1
   # clean up lightning node data
   docker run --rm -v "$(pwd)/data:/data" alpine rm -rf /data/clightning-1 /data/clightning-2 /data/clightning-3 /data/lnd-1 /data/lnd-2 /data/lnd-3 /data/boltz/boltz.db
   # recreate lightning node data folders preventing permission errors

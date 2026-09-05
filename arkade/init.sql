@@ -1,0 +1,2 @@
+CREATE DATABASE nbxplorer;
+CREATE DATABASE boltz;

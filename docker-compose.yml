@@ -209,6 +209,7 @@ services:
   spark-electrs:
     profiles:
       - spark
+      - arkade
     image: cashu-spark-electrs:5b8819039dc1ad1dddf2c3c293ec8825975680f8
     build:
       context: ./spark/electrs-build
@@ -488,7 +489,150 @@ services:
     volumes:
       - bark-wallet-data:/wallets
 
+  arkade-postgres:
+    profiles: [arkade]
+    image: postgres:16.4-bookworm
+    environment:
+      POSTGRES_PASSWORD: regtest-arkade
+    volumes:
+      - arkade-postgres-data:/var/lib/postgresql/data
+      - ./arkade/init.sql:/docker-entrypoint-initdb.d/arkade.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  arkade-nbxplorer:
+    profiles: [arkade]
+    image: nicolasdorier/nbxplorer@sha256:d6ac82366a47f7b3b133b99de5b860fcee63e1072265d8688b3c841f2f42af50
+    depends_on:
+      arkade-postgres:
+        condition: service_healthy
+      bitcoind:
+        condition: service_started
+    environment:
+      NBXPLORER_NETWORK: regtest
+      NBXPLORER_CHAINS: btc
+      NBXPLORER_BTCRPCURL: http://bitcoind:18443/
+      NBXPLORER_BTCNODEENDPOINT: bitcoind:18444
+      NBXPLORER_BTCRPCUSER: cashu
+      NBXPLORER_BTCRPCPASSWORD: cashu
+      NBXPLORER_BIND: 0.0.0.0:32838
+      NBXPLORER_POSTGRES: "User ID=postgres;Password=regtest-arkade;Host=arkade-postgres;Port=5432;Database=nbxplorer"
+      NBXPLORER_EXPOSERPC: "1"
+      NBXPLORER_NOAUTH: "1"
+      # The existing initializer owns mining; preserve its 201-block baseline.
+      NBXPLORER_NOWARMUP: "1"
+    healthcheck:
+      test: [CMD, bash, -c, "echo > /dev/tcp/127.0.0.1/32838"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    restart: on-failure
+
+  arkade-operator-wallet:
+    profiles: [arkade]
+    image: ghcr.io/arkade-os/arkd-wallet@sha256:9c4092115440039e87f1fc7e053c388d508abb36edbe9fe07c9e0a140948edd2
+    depends_on:
+      arkade-nbxplorer:
+        condition: service_healthy
+    environment:
+      ARKD_WALLET_NETWORK: regtest
+      # Public upstream regtest fixture, never a production signer.
+      ARKD_WALLET_SIGNER_KEY: afcd3fa10f82a05fddc9574fdb13b3991b568e89cc39a72ba4401df8abef35f0
+      ARKD_WALLET_NBXPLORER_URL: http://arkade-nbxplorer:32838
+      ARKD_WALLET_LOG_LEVEL: "4"
+    volumes:
+      - arkade-wallet-data:/app/data
+    restart: on-failure
+
+  arkade-operator:
+    profiles: [arkade]
+    image: ghcr.io/arkade-os/arkd@sha256:f723e26a1bff7fa529dc0abd414088f294e43be8916dbb8f081dccd6fcad90b5
+    depends_on: [arkade-operator-wallet, spark-electrs]
+    environment:
+      ARKD_NO_TLS: "true"
+      ARKD_NO_MACAROONS: "true"
+      ARKD_WALLET_ADDR: arkade-operator-wallet:6060
+      ARKD_ESPLORA_URL: http://spark-electrs:3002
+      ARKD_VTXO_MIN_AMOUNT: "1"
+      ARKD_DB_TYPE: sqlite
+      ARKD_EVENT_DB_TYPE: badger
+      ARKD_UNLOCKER_TYPE: env
+      ARKD_UNLOCKER_PASSWORD: regtest-arkade
+      ARKD_VTXO_TREE_EXPIRY: "180"
+      ARKD_UNILATERAL_EXIT_DELAY: "5"
+      ARKD_PUBLIC_UNILATERAL_EXIT_DELAY: "5"
+      ARKD_BOARDING_EXIT_DELAY: "180"
+      ARKD_CHECKPOINT_EXIT_DELAY: "5"
+      ARKD_LIVE_STORE_TYPE: inmemory
+      ARKD_LOG_LEVEL: "4"
+      ARKD_SESSION_DURATION: "10"
+      ARKD_ROUND_MIN_PARTICIPANTS_COUNT: "1"
+    ports: ["127.0.0.1:7070:7070"]
+    volumes:
+      - arkade-operator-data:/app/data
+    restart: on-failure
+
+  arkade-fulmine:
+    profiles: [arkade]
+    image: ghcr.io/arklabshq/fulmine@sha256:810071c73b27efe11999003dd838f25ff54029925011a02f84cdfae2efd67b8f
+    environment:
+      FULMINE_ARK_SERVER: http://arkade-operator:7070
+      FULMINE_ESPLORA_URL: http://spark-electrs:3002
+      FULMINE_NO_MACAROONS: "true"
+      FULMINE_DISABLE_TELEMETRY: "true"
+      FULMINE_UNLOCKER_TYPE: env
+      FULMINE_UNLOCKER_PASSWORD: regtest-arkade
+      FULMINE_LOG_LEVEL: "4"
+    volumes:
+      - arkade-fulmine-data:/app/data
+    restart: on-failure
+
+  arkade-boltz-backend:
+    profiles: [arkade-late]
+    image: boltz/boltz@sha256:8d495425bcf8083e842a54daa7d92328bccda8d0e6ec4742384428289bd40fb7
+    # Regtest only: LND's root-owned credentials are mounted read-only.
+    user: "0:0"
+    entrypoint: [boltzd, --datadir, /home/boltz/.boltz, --configpath, /home/boltz/.boltz/boltz.conf]
+    depends_on:
+      arkade-postgres:
+        condition: service_healthy
+      lnd-2:
+        condition: service_started
+    volumes:
+      - ./arkade/boltz.toml:/home/boltz/.boltz/boltz.conf:ro
+      - ./data/lnd-2:/home/boltz/.lnd:ro
+      - arkade-boltz-data:/home/boltz/.boltz
+    restart: on-failure
+
+  arkade-boltz:
+    profiles: [arkade-late]
+    image: nginx:1.28.0-alpine
+    depends_on: [arkade-boltz-backend]
+    # The SDK maps the official regtest API port 9069 to WebSocket port 9004.
+    ports: ["127.0.0.1:9069:80", "127.0.0.1:9004:80"]
+    volumes:
+      - ./arkade/boltz.nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  arkade-test:
+    profiles: [arkade-test]
+    environment:
+      NODE_OPTIONS: --experimental-eventsource
+    image: cashu-arkade-client:45a53690aa80dbc3fd058f3fa4c250c262cc566b
+    build: ./arkade/client-build
+    volumes:
+      - ./arkade/test:/sdk/packages/boltz-swap/regtest:ro
+      - ./data/lnd-1:/lnd:ro
+      - ./data/clightning-2:/cln:ro
+
 volumes:
+  arkade-postgres-data:
+  arkade-wallet-data:
+  arkade-operator-data:
+  arkade-fulmine-data:
+  arkade-boltz-data:
   lnbits-data:
   spark-postgres-data:
   spark-electrs-data:

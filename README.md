@@ -23,6 +23,13 @@ cd cashu-regtest
 ./start.sh  # start the regtest and also run tests
 ```
 
+## Optional Arkade regtest
+
+Run `./start.sh --arkade` to start Arkade with real Boltz/Fulmine Lightning
+swaps and test a temporary wallet's onchain and Lightning send/receive flows.
+It can be combined with `--spark --bark`. See [Arkade setup and tests](arkade/README.md)
+for pinned versions, local endpoints, fee behavior, and test coverage.
+
 ## Optional Bark / Ark regtest
 
 ```sh

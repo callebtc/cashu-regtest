@@ -106,3 +106,14 @@ echo 'Bark gossip readiness regression test passed'
   fi
 )
 echo 'Bark Lightning height regression test passed'
+
+(
+  docker() {
+    case " $* " in
+      *" -rpcwallet=cashu "*) return 0 ;;
+      *) echo 'ERROR: Bitcoin helper did not select the faucet wallet' >&2; return 1 ;;
+    esac
+  }
+  bitcoin-cli-sim getnewaddress
+)
+echo 'Multi-wallet Bitcoin helper regression test passed'
