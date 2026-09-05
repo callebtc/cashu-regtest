@@ -76,14 +76,14 @@ cashu-regtest-start(){
       echo "dockerd is not running"
       exit
   fi
-  cashu-regtest-stop
-  docker compose up -d --remove-orphans
+  cashu-regtest-stop || return 1
+  docker compose up -d --remove-orphans || return 1
   cashu-regtest-init
 }
 
 cashu-regtest-start-log(){
-  cashu-regtest-stop
-  docker compose up --remove-orphans
+  cashu-regtest-stop || return 1
+  docker compose up --remove-orphans || return 1
   cashu-regtest-init
 }
 
@@ -102,18 +102,26 @@ cashu-regtest-restart(){
 
 cashu-bitcoin-init(){
   echo "init_bitcoin_wallet..."
+  local wallet_ready=false
   for i in $(seq 1 10); do
-    bitcoin-cli-sim createwallet cashu && break  || sleep 1
+    if bitcoin-cli-sim createwallet cashu; then
+      wallet_ready=true
+      break
+    fi
+    sleep 1
   done
-  bitcoin-cli-sim loadwallet cashu
+  if [ "$wallet_ready" != true ]; then
+    echo "failed to initialize the Bitcoin wallet" >&2
+    return 1
+  fi
   echo "mining 150 blocks..."
   bitcoin-cli-sim -generate 150 > /dev/null
 }
 
 cashu-regtest-init(){
-  cashu-bitcoin-init
-  cashu-lightning-sync
-  cashu-lightning-init
+  cashu-bitcoin-init || return 1
+  cashu-lightning-sync || return 1
+  cashu-lightning-init || return 1
   if [ "${CASHU_SPARK_REGTEST:-false}" = "true" ]; then
     cashu-spark-init
   fi
@@ -339,12 +347,12 @@ cashu-spark-e2e(){
 }
 
 cashu-lightning-sync(){
-  wait-for-clightning-sync 1
-  wait-for-clightning-sync 2
-  wait-for-clightning-sync 3
-  wait-for-lnd-sync 1
-  wait-for-lnd-sync 2
-  wait-for-lnd-sync 3
+  wait-for-clightning-sync 1 || return 1
+  wait-for-clightning-sync 2 || return 1
+  wait-for-clightning-sync 3 || return 1
+  wait-for-lnd-sync 1 || return 1
+  wait-for-lnd-sync 2 || return 1
+  wait-for-lnd-sync 3 || return 1
 }
 
 cashu-lightning-init(){
@@ -476,16 +484,19 @@ wait-for-clightning-channel(){
 }
 
 wait-for-clightning-sync(){
-  while true; do
-    if [[ ! "$(lightning-cli-sim $1 getinfo 2>&1 | jq -r '.id' 2> /dev/null)" == "null" ]]; then
-      if [[ "$(lightning-cli-sim $1 getinfo 2>&1 | jq -r '.warning_bitcoind_sync' 2> /dev/null)" == "null" ]]; then
-        if [[ "$(lightning-cli-sim $1 getinfo 2>&1 | jq -r '.warning_lightningd_sync' 2> /dev/null)" == "null" ]]; then
-          echo "cln-$1 is synced!"
-          break
-        fi
-      fi
+  local attempt info
+  for attempt in $(seq 1 180); do
+    if info=$(lightning-cli-sim "$1" getinfo 2>&1) && \
+      printf '%s' "$info" | jq -e \
+        '(.id | type == "string" and length > 0) and
+         .warning_bitcoind_sync == null and .warning_lightningd_sync == null' > /dev/null 2>&1; then
+      echo "cln-$1 is synced!"
+      return 0
     fi
     echo "waiting for cln-$1 to sync..."
     sleep 1
   done
+  echo "timed out waiting for cln-$1 to sync; last getinfo response: $info" >&2
+  docker compose logs --tail=100 bitcoind "clightning-$1" >&2 || true
+  return 1
 }

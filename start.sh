@@ -46,6 +46,7 @@ spark_failure_logs(){
   if [ "$status" -ne 0 ] && [ "$spark_enabled" = "true" ]; then
     docker compose ps -a >&2 || true
     docker compose logs --tail=250 \
+      bitcoind clightning-1 clightning-2 clightning-3 \
       spark-postgres spark-operator-0 spark-operator-1 spark-operator-2 \
       spark-ldk spark-ssp spark-electrs >&2 || true
   fi

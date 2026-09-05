@@ -271,7 +271,7 @@ services:
       - spark
     image: cashu-ldk-server:6d6d810714706c225ce7effc2163eff6a1b54221
     build:
-      context: "https://github.com/lightningdevkit/ldk-server.git?ref=6d6d810714706c225ce7effc2163eff6a1b54221&checksum=6d6d810714706c225ce7effc2163eff6a1b54221"
+      context: "https://github.com/lightningdevkit/ldk-server.git#6d6d810714706c225ce7effc2163eff6a1b54221"
       dockerfile_inline: |
         FROM rust:1.92-slim-bookworm AS builder
         WORKDIR /app
@@ -343,7 +343,7 @@ services:
       - spark
     image: cashu-open-ssp:04f8330b0bd76335c3b9798b73f2fc0a3622d7d5
     build:
-      context: "https://github.com/benthecarman/open-ssp.git?ref=04f8330b0bd76335c3b9798b73f2fc0a3622d7d5&checksum=04f8330b0bd76335c3b9798b73f2fc0a3622d7d5"
+      context: "https://github.com/benthecarman/open-ssp.git#04f8330b0bd76335c3b9798b73f2fc0a3622d7d5"
       dockerfile: ssp.Dockerfile
     depends_on:
       spark-operator-0:
