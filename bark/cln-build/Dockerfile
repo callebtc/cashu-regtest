@@ -10,7 +10,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --locked --release --jobs 2 \
     && cp target/release/hold /usr/local/bin/hold
-FROM elementsproject/lightningd:v26.06.6
+# Corrected release manifest: the initial v26.06.7 tag lacked the release fixes.
+FROM elementsproject/lightningd:v26.06.7@sha256:0421a5f0d1b2e1ad639edfa17d777816040e3850d91bae7f2d32186d9c1e6da4
 RUN apt-get update && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=hold /usr/local/bin/hold /usr/local/bin/hold

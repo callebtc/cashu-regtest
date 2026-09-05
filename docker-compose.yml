@@ -25,7 +25,7 @@ x-spark-operator-common: &spark-operator-common
 services:
   bitcoind:
     hostname: bitcoind
-    image: boltz/bitcoin-core:30.3
+    image: boltz/bitcoin-core:31.1@sha256:b225dff8e72701ebb15f67cb9f75ae8c4997bd08da392569d47245e99e6fc27c
     command: "-regtest -fallbackfee=0.00000253 -zmqpubrawtx=tcp://0.0.0.0:29000 -zmqpubrawblock=tcp://0.0.0.0:29001 -zmqpubhashblock=tcp://0.0.0.0:29002 -txindex -rpcallowip=0.0.0.0/0 -rpcbind=0.0.0.0 -rpcuser=cashu -rpcpassword=cashu -addresstype=bech32 -changetype=bech32 -dbcache=2048 -rpcworkqueue=256"
     expose:
       - 29000
@@ -43,7 +43,7 @@ services:
     hostname: clightning-1
     depends_on:
       - bitcoind
-    image: boltz/c-lightning:26.06.1
+    image: elementsproject/lightningd:v26.06.7@sha256:0421a5f0d1b2e1ad639edfa17d777816040e3850d91bae7f2d32186d9c1e6da4
     entrypoint: "sh -c 'sleep 15 && lightningd --large-channels --network regtest --grpc-port 9738 --bind-addr=0.0.0.0:9735 --bitcoin-rpcconnect=bitcoind --bitcoin-rpcport=18443 --bitcoin-rpcuser=cashu --bitcoin-rpcpassword=cashu --clnrest-port=3010 --clnrest-host=0.0.0.0'"
     expose:
       - 9735
@@ -54,7 +54,7 @@ services:
     hostname: clightning-2
     depends_on:
       - bitcoind
-    image: boltz/c-lightning:26.06.1
+    image: elementsproject/lightningd:v26.06.7@sha256:0421a5f0d1b2e1ad639edfa17d777816040e3850d91bae7f2d32186d9c1e6da4
     entrypoint: "sh -c 'sleep 15 && lightningd --large-channels --network regtest --grpc-port 9738 --bind-addr=0.0.0.0:9735 --bitcoin-rpcconnect=bitcoind --bitcoin-rpcport=18443 --bitcoin-rpcuser=cashu --bitcoin-rpcpassword=cashu --clnrest-port=3010 --clnrest-host=0.0.0.0'"
     ports:
       - 3010:3010
@@ -82,7 +82,7 @@ services:
     hostname: clightning-3
     depends_on:
       - bitcoind
-    image: boltz/c-lightning:26.06.1
+    image: elementsproject/lightningd:v26.06.7@sha256:0421a5f0d1b2e1ad639edfa17d777816040e3850d91bae7f2d32186d9c1e6da4
     entrypoint: "sh -c 'sleep 15 && lightningd --large-channels --network regtest --grpc-port 9738 --bind-addr=0.0.0.0:9735 --bitcoin-rpcconnect=bitcoind --bitcoin-rpcport=18443 --bitcoin-rpcuser=cashu --bitcoin-rpcpassword=cashu  --clnrest-port=3010 --clnrest-host=0.0.0.0'"
     expose:
       - 9735
@@ -93,7 +93,7 @@ services:
     hostname: lnd-1
     depends_on:
       - bitcoind
-    image: boltz/lnd:0.21.0-beta
+    image: lightninglabs/lnd:v0.21.3-beta@sha256:d29074335f3bffb2ac0e789b0d023c24fbb85ce67ecbfb7d677399842fe0535c
     restart: on-failure
     entrypoint: "sh -c 'sleep 20; lnd --listen=lnd-1:9735 --rpclisten=lnd-1:10009 --restlisten=lnd-1:8081 --bitcoin.active --bitcoin.regtest --bitcoin.node=bitcoind --bitcoind.rpchost=bitcoind --bitcoind.zmqpubrawtx=bitcoind:29000 --bitcoind.zmqpubrawblock=bitcoind:29001 --bitcoind.rpcuser=cashu --bitcoind.rpcpass=cashu --noseedbackup --protocol.wumbo-channels'"
     expose:
@@ -107,7 +107,7 @@ services:
     hostname: lnd-2
     depends_on:
       - bitcoind
-    image: boltz/lnd:0.21.0-beta
+    image: lightninglabs/lnd:v0.21.3-beta@sha256:d29074335f3bffb2ac0e789b0d023c24fbb85ce67ecbfb7d677399842fe0535c
     restart: on-failure
     entrypoint: "sh -c 'sleep 20; lnd --listen=lnd-2:9735 --rpclisten=lnd-2:10009 --restlisten=lnd-2:8081 --bitcoin.active --bitcoin.regtest --bitcoin.node=bitcoind --bitcoind.rpchost=bitcoind --bitcoind.zmqpubrawtx=bitcoind:29000 --bitcoind.zmqpubrawblock=bitcoind:29001 --bitcoind.rpcuser=cashu --bitcoind.rpcpass=cashu --noseedbackup --protocol.wumbo-channels'"
     expose:
@@ -121,7 +121,7 @@ services:
     hostname: lnd-3
     depends_on:
       - bitcoind
-    image: boltz/lnd:0.21.0-beta
+    image: lightninglabs/lnd:v0.21.3-beta@sha256:d29074335f3bffb2ac0e789b0d023c24fbb85ce67ecbfb7d677399842fe0535c
     restart: on-failure
     entrypoint: "sh -c 'sleep 20; lnd --listen=lnd-3:9735 --rpclisten=lnd-3:10009 --restlisten=lnd-3:8081 --bitcoin.active --bitcoin.regtest --bitcoin.node=bitcoind --bitcoind.rpchost=bitcoind --bitcoind.zmqpubrawtx=bitcoind:29000 --bitcoind.zmqpubrawblock=bitcoind:29001 --bitcoind.rpcuser=cashu --bitcoind.rpcpass=cashu --noseedbackup --protocol.wumbo-channels'"
     ports:
@@ -432,7 +432,7 @@ services:
   bark-cln:
     profiles: [bark]
     hostname: cln
-    image: cashu-bark-cln:26.06.6-hold-af0055b
+    image: cashu-bark-cln:26.06.7-hold-af0055b
     pull_policy: never
     build: ./bark/cln-build
     entrypoint: [/bin/sh, /etc/bark/cln-entrypoint.sh]
