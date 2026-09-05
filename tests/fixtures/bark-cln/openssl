@@ -1,0 +1,7 @@
+#!/bin/sh
+# Certificate replacement must never overlap the bootstrap CLN process.
+if [ -d /test-state/lock ]; then
+  echo "Certificates replaced before CLN released its lock" >&2
+  exit 44
+fi
+[ -f /test-state/stopped ]
