@@ -28,7 +28,8 @@ jobs:
 
   regtest:
     runs-on: "ubuntu-latest"
-    timeout-minutes: 10
+    # A cold native Rust build of the default LDK Node daemon takes longer.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v3
       - name: Setup Regtest

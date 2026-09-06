@@ -3,6 +3,7 @@ export COMPOSE_PROJECT_NAME=cashu
 
 SPARK_ADMIN_TOKEN=regtest-spark-admin-token
 . ./bark/scripts.sh
+. ./ldk/scripts.sh
 
 bitcoin-cli-sim() {
   docker exec cashu-bitcoind-1 bitcoin-cli -rpcuser=cashu -rpcpassword=cashu -regtest -rpcwallet=cashu "$@"
@@ -23,9 +24,10 @@ lncli-sim() {
 }
 
 ldk-cli-sim() {
-  container=$(docker compose --profile spark ps -q spark-ldk)
+  local container api_key
+  container=$(docker compose ps -q ldk)
   if [ -z "$container" ]; then
-    echo "spark-ldk is not running" >&2
+    echo "ldk is not running" >&2
     return 1
   fi
   api_key=$(docker exec "$container" sh -c "od -A n -t x1 /data/regtest/api_key | tr -d ' \\n'")
@@ -123,6 +125,7 @@ cashu-regtest-init(){
   cashu-bitcoin-init || return 1
   cashu-lightning-sync || return 1
   cashu-lightning-init || return 1
+  cashu-ldk-init || return 1
   if [ "${CASHU_SPARK_REGTEST:-false}" = "true" ]; then
     cashu-spark-init || return 1
   fi
@@ -135,7 +138,6 @@ cashu-spark-init(){
   wait-for-spark-keyshares || return 1
   wait-for-spark-ssp || return 1
   wait-for-spark-electrs || return 1
-  cashu-spark-lightning-init || return 1
   cashu-spark-fund-ssp || return 1
 }
 
@@ -201,51 +203,6 @@ wait-for-spark-electrs(){
     sleep 2
   done
   echo "timed out waiting for Spark Esplora" >&2
-  return 1
-}
-
-cashu-spark-lightning-init(){
-  ldk_address=$(ldk-cli-sim onchain-receive | jq -er '.address') || return 1
-  echo "funding Spark ldk-server on-chain reserve"
-  bitcoin-cli-sim -named sendtoaddress \
-    address="$ldk_address" amount=0.001 fee_rate=100 > /dev/null || return 1
-  bitcoin-cli-sim -generate 3 > /dev/null
-
-  for attempt in $(seq 1 60); do
-    spendable=$(ldk-cli-sim get-balances | jq -r '.spendable_onchain_balance_sats // 0')
-    if [ "$spendable" -ge 25000 ]; then
-      break
-    fi
-    sleep 2
-  done
-  if [ "$spendable" -lt 25000 ]; then
-    echo "timed out funding the Spark ldk-server on-chain reserve" >&2
-    return 1
-  fi
-
-  ldk_node_id=$(ldk-cli-sim get-node-info | jq -r '.node_id')
-  if [ -z "$ldk_node_id" ] || [ "$ldk_node_id" = "null" ]; then
-    echo "ldk-server did not return a node ID" >&2
-    return 1
-  fi
-
-  lncli-sim 1 connect "$ldk_node_id@spark-ldk:9735" > /dev/null
-  echo "open channel from lnd-1 to Spark ldk-server"
-  lncli-sim 1 openchannel "$ldk_node_id" 24000000 12000000 > /dev/null
-  bitcoin-cli-sim -generate 6 > /dev/null
-  wait-for-lnd-channel 1
-
-  for attempt in $(seq 1 60); do
-    ready=$(ldk-cli-sim list-channels | jq -r \
-      --arg node_id "$(lncli-sim 1 getinfo | jq -r '.identity_pubkey')" \
-      '[.channels[]? | select(.counterparty_node_id == $node_id and .is_channel_ready == true)] | length')
-    if [ "$ready" -gt 0 ]; then
-      echo "Spark ldk-server channel is ready"
-      return
-    fi
-    sleep 2
-  done
-  echo "timed out waiting for the Spark ldk-server channel" >&2
   return 1
 }
 

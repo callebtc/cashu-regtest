@@ -267,9 +267,7 @@ services:
         aliases:
           - spark-operator-2.minikube.local
 
-  spark-ldk:
-    profiles:
-      - spark
+  ldk:
     image: cashu-ldk-server:6d6d810714706c225ce7effc2163eff6a1b54221
     build:
       context: "https://github.com/lightningdevkit/ldk-server.git#6d6d810714706c225ce7effc2163eff6a1b54221"
@@ -335,8 +333,8 @@ services:
       retries: 30
       start_period: 10s
     volumes:
-      - spark-ldk-data:/data
-      - ./spark/ldk-server.toml:/config.toml:ro
+      - ldk-data:/data
+      - ./ldk/config.toml:/config.toml:ro
     restart: unless-stopped
 
   spark-ssp:
@@ -353,7 +351,7 @@ services:
         condition: service_started
       spark-operator-2:
         condition: service_started
-      spark-ldk:
+      ldk:
         condition: service_healthy
     ports:
       - "127.0.0.1:5000:5000"
@@ -374,7 +372,7 @@ services:
       SO_IDENTITY_PUBKEYS: 0322ca18fc489ae25418a0e768273c2c61cabb823edfb14feb891e9bec62016510,0341727a6c41b168f07eb50865ab8c397a53c7eef628ac1020956b705e43b6cb27,0305ab8d485cc752394de4981f8a5ae004f2becfea6f432c9a59d5022d8764f0a6
       SO_CERT_FILES: /tls/server_0.crt,/tls/server_1.crt,/tls/server_2.crt
       SPARK_ADMIN_TOKEN: regtest-spark-admin-token
-      LDK_GRPC_ADDR: spark-ldk:3536
+      LDK_GRPC_ADDR: ldk:3536
       LDK_API_KEY_FILE: /ldk-data/regtest/api_key
       LDK_TLS_CERT_FILE: /ldk-data/tls.crt
       SSP_SWAP_FEE_SATS: "0"
@@ -384,7 +382,7 @@ services:
       RUST_LOG: info
     volumes:
       - spark-ssp-data:/data
-      - spark-ldk-data:/ldk-data:ro
+      - ldk-data:/ldk-data:ro
       - spark-tls-certs:/tls:ro
     restart: unless-stopped
 
@@ -522,7 +520,7 @@ services:
       NBXPLORER_POSTGRES: "User ID=postgres;Password=regtest-arkade;Host=arkade-postgres;Port=5432;Database=nbxplorer"
       NBXPLORER_EXPOSERPC: "1"
       NBXPLORER_NOAUTH: "1"
-      # The existing initializer owns mining; preserve its 201-block baseline.
+      # The existing initializer owns mining; do not advance its baseline.
       NBXPLORER_NOWARMUP: "1"
     healthcheck:
       test: [CMD, bash, -c, "echo > /dev/tcp/127.0.0.1/32838"]
@@ -637,7 +635,7 @@ volumes:
   spark-postgres-data:
   spark-electrs-data:
   spark-tls-certs:
-  spark-ldk-data:
+  ldk-data:
   spark-ssp-data:
   bark-postgres-data:
   bark-cln-data:

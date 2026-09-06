@@ -1,7 +1,7 @@
 [node]
 network = "regtest"
 listening_addresses = ["0.0.0.0:9735"]
-alias = "cashu-spark-regtest"
+alias = "cashu-ldk-regtest"
 
 [storage.disk]
 dir_path = "/data"
@@ -10,7 +10,7 @@ dir_path = "/data"
 level = "Info"
 
 [tls]
-hosts = ["spark-ldk", "localhost"]
+hosts = ["ldk", "localhost"]
 
 [bitcoind]
 rpc_address = "bitcoind:18443"

@@ -57,6 +57,7 @@ echo 'Startup regression tests passed'
   cashu-lightning-sync() { :; }
   cashu-lightning-init() { :; }
   cashu-spark-init() { return 1; }
+  cashu-ldk-init() { :; }
   cashu-bark-init() { echo 'ERROR: continued after Spark failure' >&2; exit 99; }
   if cashu-regtest-init; then exit 1; fi
 )
@@ -66,6 +67,7 @@ echo 'Startup regression tests passed'
   cashu-lightning-sync() { :; }
   cashu-lightning-init() { :; }
   cashu-bark-init() { return 1; }
+  cashu-ldk-init() { :; }
   if cashu-regtest-init; then exit 1; fi
 )
 if bash ./start.sh --invalid-option >/dev/null 2>&1; then
@@ -117,3 +119,36 @@ echo 'Bark Lightning height regression test passed'
   bitcoin-cli-sim getnewaddress
 )
 echo 'Multi-wallet Bitcoin helper regression test passed'
+
+(
+  cashu-bitcoin-init() { :; }
+  cashu-lightning-sync() { :; }
+  cashu-lightning-init() { :; }
+  cashu-ldk-init() { return 1; }
+  export CASHU_SPARK_REGTEST=true
+  cashu-spark-init() { echo 'ERROR: continued after LDK failure' >&2; exit 99; }
+  if cashu-regtest-init; then exit 1; fi
+)
+(
+  bitcoin-cli-sim() { echo 210; }
+  ldk-cli-sim() { echo '{"current_best_block":{"height":209}}'; }
+  lncli-sim() { echo '{"block_height":210}'; }
+  lightning-cli-sim() { echo '{"blockheight":210}'; }
+  sleep() { :; }
+  if wait-for-ldk-height >/dev/null 2>&1; then
+    echo 'ERROR: stale LDK height was treated as synchronized' >&2
+    exit 1
+  fi
+)
+echo 'LDK startup failure and chain-height regression tests passed'
+(
+  sleep() { :; }
+  ldk-cli-sim() { echo '{"total_onchain_balance_sats":180000000}'; }
+  if wait-for-ldk-wallet-spend 180000000 24000000 >/dev/null 2>&1; then
+    echo 'ERROR: reused wallet inputs before the funding spend was observed' >&2
+    exit 1
+  fi
+  ldk-cli-sim() { echo '{"total_onchain_balance_sats":155990000}'; }
+  wait-for-ldk-wallet-spend 180000000 24000000
+)
+echo 'LDK channel-funding wallet sync regression test passed'
