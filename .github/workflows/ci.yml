@@ -25,6 +25,8 @@ jobs:
         run: |
           docker compose --profile "*" ps -a
           docker compose --profile "*" logs --tail=200 arkade-operator arkade-operator-wallet arkade-fulmine arkade-boltz-backend arkade-nbxplorer spark-electrs bitcoind lnd-2
+          source ./docker-scripts.sh
+          fee-diagnostics
 
   regtest:
     runs-on: "ubuntu-latest"
@@ -37,6 +39,11 @@ jobs:
           bash tests/startup.sh
           chmod -R 777 .
           bash ./start.sh
+      - name: Fee topology failure diagnostics
+        if: failure()
+        run: |
+          source ./docker-scripts.sh
+          fee-diagnostics
 
   spark-regtest:
     runs-on: "ubuntu-latest"
@@ -47,6 +54,11 @@ jobs:
         run: |
           chmod -R 777 .
           bash ./start.sh --spark
+      - name: Fee topology failure diagnostics
+        if: failure()
+        run: |
+          source ./docker-scripts.sh
+          fee-diagnostics
 
   bark-regtest:
     runs-on: "ubuntu-latest"
@@ -66,3 +78,5 @@ jobs:
         run: |
           docker compose --profile bark ps -a
           docker compose --profile bark logs --tail=250 bark-server bark-cln bark-postgres bitcoind lnd-1
+          source ./docker-scripts.sh
+          fee-diagnostics

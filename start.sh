@@ -47,7 +47,7 @@ run(){
 }
 
 failed="false"
-blockheight=210
+blockheight=219
 utxos=3
 channel_size=24000000 # 0.024 btc
 balance_size=12000000 # 0.012 btc
@@ -57,6 +57,7 @@ source docker-scripts.sh
 optional_failure_logs(){
   status=$?
   if [ "$status" -ne 0 ]; then
+    fee-diagnostics >&2 || true
     docker compose logs --tail=150 ldk bitcoind lnd-1 lnd-2 lnd-3 \
       clightning-1 clightning-2 clightning-3 >&2 || true
   fi
@@ -83,7 +84,7 @@ cashu-regtest-start || exit 1
 if [ "$spark_enabled" = "true" ]; then
   cashu-spark-e2e || exit 1
   cashu-lightning-sync || exit 1
-  blockheight=216
+  blockheight=225
 fi
 if [ "$bark_enabled" = "true" ]; then
   cashu-lightning-sync || exit 1
@@ -99,7 +100,7 @@ for i in 1 2 3; do
   run "lnd-$i utxo count" $utxos $(lncli-sim $i listunspent | jq -r ".utxos | length")
   run "lnd-$i .block_height" $blockheight $(lncli-sim $i getinfo | jq -r ".block_height")
   if [[ "$i" == "1" ]]; then
-    channel_count=6
+    channel_count=7
     if [ "$bark_enabled" = "true" ]; then
       channel_count=$((channel_count + 1))
     fi
@@ -134,6 +135,7 @@ run "LDK ready channels" "6" $(ldk-cli-sim list-channels | jq -r '[.channels[]? 
 # return non-zero exit code if a test fails
 if [ "$failed" = "false" ]; then
   bash ldk/e2e.sh || exit 1
+  bash fees/e2e.sh || exit 1
 fi
 if [ "$failed" = "false" ] && [ "$bark_enabled" = "true" ]; then
   cashu-bark-e2e || exit 1

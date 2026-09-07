@@ -39,7 +39,7 @@ services:
       timeout: 5s
       retries: 30
 
-  clightning-1:
+  clightning-1: &cln-node
     hostname: clightning-1
     depends_on:
       - bitcoind
@@ -89,7 +89,7 @@ services:
     volumes:
       - ./data/clightning-3:/root/.lightning/
 
-  lnd-1:
+  lnd-1: &lnd-node
     hostname: lnd-1
     depends_on:
       - bitcoind
@@ -267,7 +267,7 @@ services:
         aliases:
           - spark-operator-2.minikube.local
 
-  ldk:
+  ldk: &ldk-node
     image: cashu-ldk-server:6d6d810714706c225ce7effc2163eff6a1b54221
     build:
       context: "https://github.com/lightningdevkit/ldk-server.git#6d6d810714706c225ce7effc2163eff6a1b54221"
@@ -336,6 +336,39 @@ services:
       - ldk-data:/data
       - ./ldk/config.toml:/config.toml:ro
     restart: unless-stopped
+
+  fee-hub:
+    <<: *lnd-node
+    hostname: fee-hub
+    entrypoint: "lnd --listen=0.0.0.0:9735 --rpclisten=0.0.0.0:10009 --restlisten=0.0.0.0:8081 --bitcoin.active --bitcoin.regtest --bitcoin.node=bitcoind --bitcoind.rpchost=bitcoind --bitcoind.zmqpubrawtx=bitcoind:29000 --bitcoind.zmqpubrawblock=bitcoind:29001 --bitcoind.rpcuser=cashu --bitcoind.rpcpass=cashu --noseedbackup --protocol.wumbo-channels"
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    volumes:
+      - fee-hub-data:/root/.lnd
+
+  lnd-4:
+    <<: *lnd-node
+    hostname: lnd-4
+    entrypoint: "lnd --listen=0.0.0.0:9735 --rpclisten=0.0.0.0:10009 --restlisten=0.0.0.0:8081 --bitcoin.active --bitcoin.regtest --bitcoin.node=bitcoind --bitcoind.rpchost=bitcoind --bitcoind.zmqpubrawtx=bitcoind:29000 --bitcoind.zmqpubrawblock=bitcoind:29001 --bitcoind.rpcuser=cashu --bitcoind.rpcpass=cashu --noseedbackup --protocol.wumbo-channels"
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    volumes:
+      - fee-lnd-data:/root/.lnd
+
+  clightning-4:
+    <<: *cln-node
+    hostname: clightning-4
+    volumes:
+      - fee-cln-data:/root/.lightning
+
+  ldk-fee:
+    <<: *ldk-node
+    ports: []
+    volumes:
+      - fee-ldk-data:/data
+      - ./fees/ldk.toml:/config.toml:ro
 
   spark-ssp:
     profiles:
@@ -626,6 +659,10 @@ services:
       - ./data/clightning-2:/cln:ro
 
 volumes:
+  fee-hub-data:
+  fee-lnd-data:
+  fee-cln-data:
+  fee-ldk-data:
   arkade-postgres-data:
   arkade-wallet-data:
   arkade-operator-data:

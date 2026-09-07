@@ -3,6 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source ./docker-scripts.sh
+cashu-fees-init() { :; }
 
 (
   cashu-regtest-stop() { return 0; }
@@ -152,3 +153,36 @@ echo 'LDK startup failure and chain-height regression tests passed'
   wait-for-ldk-wallet-spend 180000000 24000000
 )
 echo 'LDK channel-funding wallet sync regression test passed'
+
+(
+  cashu-bitcoin-init() { :; }
+  cashu-lightning-sync() { :; }
+  cashu-lightning-init() { :; }
+  cashu-ldk-init() { :; }
+  cashu-fees-init() { return 1; }
+  export CASHU_SPARK_REGTEST=true
+  cashu-spark-init() { echo 'ERROR: continued after fee topology failure' >&2; exit 99; }
+  if cashu-regtest-init; then exit 1; fi
+)
+(
+  fee-hub-cli-sim() { echo '{"block_height":219}'; }
+  lncli-sim() { echo '{"block_height":219}'; }
+  lightning-cli-sim() { echo '{"blockheight":219}'; }
+  ldk-fee-cli-sim() { echo '{"current_best_block":{"height":218}}'; }
+  if fee-height-ready 219; then
+    echo 'ERROR: stale fee leaf accepted' >&2; exit 1
+  fi
+)
+(
+  fee-hub-cli-sim() {
+    if [ "$1" = getinfo ]; then echo '{"identity_pubkey":"hub"}'; else
+      echo '{"channels":[{"scid":"1"},{"scid":"2"},{"scid":"3"},{"scid":"4"}]}'
+    fi
+  }
+  lightning-cli-sim() { echo '{"channels":[]}'; }
+  lncli-sim() { echo '{"node1_pub":"hub","node1_policy":{"disabled":false,"fee_base_msat":"1000","fee_rate_milli_msat":"0"}}'; }
+  if fee-policies-ready >/dev/null 2>&1; then
+    echo 'ERROR: stale zero-fee graph accepted' >&2; exit 1
+  fi
+)
+echo 'Fee topology failure, stale height, and stale policy regressions passed'
