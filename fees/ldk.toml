@@ -1,0 +1,18 @@
+[node]
+network = "regtest"
+listening_addresses = ["0.0.0.0:9735"]
+alias = "cashu-fee-leaf"
+
+[storage.disk]
+dir_path = "/data"
+
+[log]
+level = "Info"
+
+[tls]
+hosts = ["ldk-fee", "localhost"]
+
+[bitcoind]
+rpc_address = "bitcoind:18443"
+rpc_user = "cashu"
+rpc_password = "cashu"

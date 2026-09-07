@@ -7,8 +7,8 @@ Pinned stable releases (checked 2026-09-05):
 | Node | Release |
 | --- | --- |
 | Bitcoin Core | [31.1](https://github.com/bitcoin/bitcoin/releases/tag/v31.1) |
-| LND (all three nodes) | [0.21.3-beta](https://github.com/lightningnetwork/lnd/releases/tag/v0.21.3-beta) |
-| Core Lightning (core nodes and Bark) | [26.06.7](https://github.com/ElementsProject/lightning/releases/tag/v26.06.7) |
+| LND (core nodes, fee hub, and fee leaf) | [0.21.3-beta](https://github.com/lightningnetwork/lnd/releases/tag/v0.21.3-beta) |
+| Core Lightning (core nodes, fee leaf, and Bark) | [26.06.7](https://github.com/ElementsProject/lightning/releases/tag/v26.06.7) |
 
 Images are pinned by multiarchitecture manifest digest for AMD64 and ARM64.
 LND and CLN use official upstream images. CLN is pinned to the corrected
@@ -23,6 +23,8 @@ image published under that tag. Bark retains its pinned hold-invoice plugin.
 * cln-2: used for clightning-REST
 * cln-3: for testing your software
 * ldk: LDK Node, running through the official `ldk-server` daemon
+* fee-hub: dedicated LND router charging 1 sat + 1,000 ppm
+* lnd-4, clightning-4, ldk-fee: fee-testing leaves with only one channel each, to fee-hub
 
 The optional Spark profile also runs three Spark Operators (a 2-of-3
 threshold), an `open-ssp` provider, and Electrs. Its Lightning backend shares
@@ -31,7 +33,8 @@ the default LDK node.
 ## Default LDK Node
 
 Plain `./start.sh` runs Bitcoin Core, three LND nodes, three CLN nodes, and
-one [LDK Node](https://github.com/lightningdevkit/ldk-node). LDK Node is a
+one core [LDK Node](https://github.com/lightningdevkit/ldk-node), plus the fee
+topology described below. LDK Node is a
 library; the official [ldk-server](https://github.com/lightningdevkit/ldk-server)
 provides its daemon and authenticated CLI. The source build pins server
 `6d6d810714706c225ce7effc2163eff6a1b54221`, which pins LDK Node
@@ -41,7 +44,7 @@ LDK opens six public 24,000,000-sat channels, one to each LND and CLN node,
 pushing 12,000,000 sats to each peer. Startup funds six confirmed Bitcoin
 UTXOs, waits for every funding transaction before mining, then checks both
 channel readiness and exact chain height. The default baseline is height
-210, with LND channel counts 6/3/4 and three channels per CLN node.
+219, with core LND channel counts 7/3/4 and three channels per core CLN node.
 
 Every start tests twelve real payments: LDK pays each peer 3,000 sats and
 each peer pays LDK 5,000 sats. Both sides must report settlement with matching
@@ -55,6 +58,50 @@ is available inside Docker at `ldk:9735`. `ldk-cli-sim` reads the generated
 API key and TLS certificate automatically. Its wallet, channels, and credentials
 live in the `ldk-data` Docker volume and are reset by a full start, like the
 rest of this disposable environment. Do not use real funds.
+
+## Fee-charging Lightning topology
+
+Every `./start.sh` also starts this channel topology:
+
+```text
+existing network -- lnd-1 -- fee-hub -- lnd-4
+                              |------ clightning-4
+                              |------ ldk-fee
+```
+
+The hub opens four public 24,000,000-sat channels, pushing 12,000,000 sats
+to each peer. Leaves never get direct channels to one another or the existing
+network. Their payments must cross the hub. Existing channel policies stay
+unchanged; a direct payment still has no forwarding fee.
+
+The hub charges `1,000 msat + floor(amount_msat * 1,000 / 1,000,000)` on
+each outgoing channel, with zero inbound discount. A 10,000-sat invoice costs
+11 sats to route; a 100,000-sat invoice costs 101 sats. The receiver gets the
+full invoice amount. Startup checks fee-policy propagation in all three leaf
+routing graphs before testing payments.
+
+Acceptance tests pay every ordered leaf pair at both amounts (12 payments),
+then pay both ways between `lnd-1` and the CLN leaf (two more). They verify
+matching hashes/preimages, exact sender fees, hub forwarding records, cleared
+HTLCs, and a total hub balance gain of 694 sats. A 10-sat fee budget for an
+11-sat route must fail without settling the invoice or crediting the hub.
+Tests run after initial balance assertions and keep their history available.
+
+```sh
+source ./docker-scripts.sh
+fee-hub-cli-sim listchannels
+fee-hub-cli-sim fwdinghistory
+lncli-sim 4 getinfo
+lightning-cli-sim 4 getinfo
+ldk-fee-cli-sim get-node-info
+invoice=$(lightning-cli-sim 4 invoice 10000000 "manual-$(date +%s)" 'Fee test' | jq -r .bolt11)
+lncli-sim 4 payinvoice --force --fee_limit 11 "$invoice"
+```
+
+The four new nodes reuse pinned images, publish no host ports, and keep
+independent wallets and credentials in disposable named volumes. A full start
+resets them. Fee topology initialization mines nine additional blocks; it
+does not alter optional L2 fee behavior or add rebalancing/recovery tests.
 
 # Installing regtest 
 get the regtest environment ready
@@ -88,7 +135,7 @@ and a dedicated Core Lightning node with Boltz's hold-invoice plugin. It opens
 a 24,000,000-sat channel from `lnd-1` with a 12,000,000-sat push and funds the
 server's onchain wallet. Startup waits for channel gossip routes, and the
 payment test waits for every Lightning node's exact Bitcoin block height to
-avoid stale-height HTLC expiry failures. Core-only `./start.sh` is unchanged.
+avoid stale-height HTLC expiry failures. Bark remains opt-in.
 
 The Bark checks also require `jq`, `xxd`, and `openssl` on the host.
 The first native ARM64/AMD64 source build can take tens of minutes. The wallet

@@ -4,6 +4,7 @@ export COMPOSE_PROJECT_NAME=cashu
 SPARK_ADMIN_TOKEN=regtest-spark-admin-token
 . ./bark/scripts.sh
 . ./ldk/scripts.sh
+. ./fees/scripts.sh
 
 bitcoin-cli-sim() {
   docker exec cashu-bitcoind-1 bitcoin-cli -rpcuser=cashu -rpcpassword=cashu -regtest -rpcwallet=cashu "$@"
@@ -126,6 +127,7 @@ cashu-regtest-init(){
   cashu-lightning-sync || return 1
   cashu-lightning-init || return 1
   cashu-ldk-init || return 1
+  cashu-fees-init || return 1
   if [ "${CASHU_SPARK_REGTEST:-false}" = "true" ]; then
     cashu-spark-init || return 1
   fi
