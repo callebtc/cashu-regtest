@@ -64,6 +64,55 @@ clightning_create_rune() {
   lightning-cli-sim $1 createrune | jq -r '.rune' > ./data/clightning-$1/rune
 }
 
+# Pulls the images that compose would otherwise build from source and retags them to the exact
+# local names the compose file expects, at which point compose finds them present and skips the
+# build. Published by .github/workflows/images.yml; the tag is the content tag the compose file
+# already carries, so a pull only misses when a pin moved and CI has not caught up.
+#
+# Every failure is a warning: an unpublished or private package, a network blip or a non-amd64 host
+# all fall through to building, which still works. CASHU_REGTEST_IMAGE_PREFIX overrides the registry
+# path; set it empty to never pull.
+cashu-regtest-pull-images(){
+  local prefix arch wanted image remote
+  prefix="${CASHU_REGTEST_IMAGE_PREFIX-ghcr.io/callebtc/cashu-regtest}"
+  if [ -z "$prefix" ]; then
+    return 0
+  fi
+  # The published images are linux/amd64 only. Pulling them onto arm64 would succeed and then run
+  # the whole stack emulated, which is worse than building native images once.
+  arch=$(docker version --format '{{.Server.Arch}}' 2>/dev/null)
+  if [ "$arch" != "amd64" ]; then
+    echo "not pulling prebuilt images: docker server arch is '${arch:-unknown}', not amd64"
+    return 0
+  fi
+  # Same derivation as the images workflow, and it honors COMPOSE_PROFILES, so only the images the
+  # enabled profiles actually need are pulled. Deduplicated by image name.
+  wanted=$(docker compose config --format json 2>/dev/null \
+    | jq -r '[ .services | to_entries[] | select(.value.build != null) ]
+             | group_by(.value.image) | map(.[0].value.image) | .[]' 2>/dev/null)
+  if [ -z "$wanted" ]; then
+    echo "not pulling prebuilt images: found no buildable services in docker-compose.yml" >&2
+    return 0
+  fi
+  echo "checking for prebuilt images under $prefix"
+  for image in $wanted; do
+    # A local image wins, so a repeat run costs no registry round trip.
+    if docker image inspect "$image" > /dev/null 2>&1; then
+      echo "  $image is already present locally"
+      continue
+    fi
+    remote="$prefix/$image"
+    echo "  pulling $remote"
+    if docker pull --quiet --platform linux/amd64 "$remote" > /dev/null 2>&1 \
+      && docker tag "$remote" "$image"; then
+      echo "    tagged as $image"
+    else
+      echo "  warning: could not pull $remote; compose will build $image from source" >&2
+    fi
+  done
+  return 0
+}
+
 cashu-regtest-start(){
   if ! command -v jq &> /dev/null
   then
@@ -81,6 +130,7 @@ cashu-regtest-start(){
       exit
   fi
   cashu-regtest-stop || return 1
+  cashu-regtest-pull-images
   docker compose up -d --remove-orphans || return 1
   cashu-regtest-init
 }
