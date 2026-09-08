@@ -185,81 +185,79 @@ Start the core environment plus the Spark Operator and Service Provider stack:
 ./start.sh --spark
 ```
 
-The Spark path builds its upstream components from pinned Git commits. The
-first build can take 30-90 minutes; later runs reuse Docker's build cache. It
-uses the default LDK node's balanced Lightning channels,
-funds the SSP's Spark wallet, and tests both a Spark-to-Lightning payment and a
-Lightning-to-Spark payment through the real SDK.
+The Spark profile builds pinned source archives natively on ARM64 and AMD64.
+The first build can take 30–90 minutes; later runs reuse Docker's cache.
+It shares the default LDK node and uses a temporary **Breez SDK – Spark Rust**
+wallet, not the former forked Spark JavaScript wallet.
 
-The pinned components are:
+Pinned revisions (checked 2026-09-08):
 
-* Spark Operators: `buildonspark/spark@0b3a32a05c9ac06cc411683551dd1f1bde9d0caa`
-* SSP: `benthecarman/open-ssp@04f8330b0bd76335c3b9798b73f2fc0a3622d7d5`
-* Lightning backend: `lightningdevkit/ldk-server@6d6d810714706c225ce7effc2163eff6a1b54221`
-* Esplora backend: `mempool/electrs@5b8819039dc1ad1dddf2c3c293ec8825975680f8`
-* Test SDK: `benthecarman/spark@06614d2e3535385f15aef3749b2c8a780f679ebc`
+* Client: unmodified `breez/spark-sdk@a3fac0e8f1f38e7e3dca110a22f37dd3264e2bde` (official upstream main at verification time; MIT).
+* SSP: `benthecarman/open-ssp@25eec4a8c492a16a4d1962b7115430181a8200ad` (now explicitly MIT-licensed).
+* Provider-internal SDK: `benthecarman/spark-sdk@2472fdc0e136868eb10e5ad9f501a7e740080f04`, the SSP's pinned fork of that Breez revision.
+* Operators: `benthecarman/spark@83cca565c3cce1a4692cedef601fef553ed0249b`, the SSP's compatible Spark fork (Apache-2.0).
+* Lightning backend: `lightningdevkit/ldk-server@6d6d810714706c225ce7effc2163eff6a1b54221`.
+* Esplora: `mempool/electrs@5b8819039dc1ad1dddf2c3c293ec8825975680f8`.
 
-The pinned official Operator contains the open-source counter-swap consensus
-implementation, but its public protobuf does not expose the RPC used by this
-`open-ssp` revision. The Operator image applies the small compatibility patch
-in `spark/operator-build/open-ssp-rpc.patch` to expose that existing handler;
-the swap implementation itself remains the pinned upstream code.
+The SSP still needs provider-specific SDK and operator patches for counter
+transfers, durable leaf splitting, and private operator APIs. These are server
+dependencies, not client patches. The old local operator compatibility patch
+is replaced by the upstream SSP's pinned operator implementation. Its private
+SSP RPC port 8536 stays inside Docker; public host operator ports remain
+8535–8537. Sources are consumed through pinned builds, not vendored.
 
-The public `open-ssp` repository did not contain an explicit software license
-at the pinned revision. This project consumes that revision as a remote local
-build and does not vendor its source. Confirm the upstream license before
-redistributing the resulting image.
+### Breez acceptance flow
 
-### Connecting a Spark wallet
+`./start.sh --spark` seeds the SSP with one coarse 500,000-sat Spark leaf,
+deliberately exercising change selection and repeated splitting. A separate
+Bitcoin Core wallet, `ssp-withdrawals`, supplies cooperative payout liquidity.
 
-Use the local network and read the SSP identity generated for the current run:
+After initial node assertions, the temporary Breez wallet:
+
+1. Receives 100,000 onchain sats at its SDK-generated static deposit address;
+   waits for SDK-observed confirmations, accepts a bounded fee quote, and
+   claims spendable Spark funds through Breez. Bitcoin must show the SSP
+   spending the deposit output.
+2. Pays 3,000-sat invoices on both LND and CLN.
+3. Receives 5,000-sat Lightning payments from each node.
+4. Cooperatively withdraws its remaining balance to Bitcoin, checks the exact
+   quoted miner fee and confirmed payout, then reconnects using the same
+   temporary seed/storage and verifies all six completed wallet records.
+
+Lightning checks match SDK, peer, and LDK settlement records and verify
+payment hashes/preimages. Operator databases must contain no incomplete
+primary/counter swaps. The fixture never constructs wallet GraphQL calls or
+signatures itself. SDK deposit/withdrawal fees are included in balance checks;
+funding exact denominations is no longer required.
+
+The Spark initialization adds three blocks (baseline 222 without Bark).
+Its payment tests mine further blocks after baseline assertions. The normal
+`./start.sh` topology and fee-hub tests are unchanged. Optional profiles can
+still be combined with `--spark --bark --arkade`. This checks confirmed deposits
+and cooperative exits, not instant deposits, unilateral recovery, or L2
+routing through the fee hub.
+
+### Connecting a Breez wallet
+
+See [the acceptance client's connection setup](spark/test/src/main.rs) for
+a complete Rust `SdkBuilder` example. Use the pinned official SDK revision,
+`default_config(Network::Regtest)`, no Breez API key, local Esplora, threshold
+2, and the three fixture signing operators. Discover the current SSP identity:
 
 ```sh
 curl http://localhost:5000/identity
 ```
 
-Configure the SDK with:
+Set `SparkSspConfig` to the reachable SSP base URL, that
+`identityPublicKey`, and `schema_endpoint: Some("graphql/spark/rc")`.
+For host clients use Esplora at `http://localhost:30000` and operator URLs
+`https://localhost:8535`, `:8536`, and `:8537`; inside Docker use the
+service names shown in the client. Configure each operator's `ca_cert_pem`
+with its generated certificate—do not disable operator TLS verification.
 
-```json
-{
-  "network": "LOCAL",
-  "threshold": 2,
-  "electrsUrl": "http://localhost:30000",
-  "signingOperators": {
-    "0000000000000000000000000000000000000000000000000000000000000001": {
-      "id": 0,
-      "identifier": "0000000000000000000000000000000000000000000000000000000000000001",
-      "address": "https://localhost:8535",
-      "identityPublicKey": "0322ca18fc489ae25418a0e768273c2c61cabb823edfb14feb891e9bec62016510"
-    },
-    "0000000000000000000000000000000000000000000000000000000000000002": {
-      "id": 1,
-      "identifier": "0000000000000000000000000000000000000000000000000000000000000002",
-      "address": "https://localhost:8536",
-      "identityPublicKey": "0341727a6c41b168f07eb50865ab8c397a53c7eef628ac1020956b705e43b6cb27"
-    },
-    "0000000000000000000000000000000000000000000000000000000000000003": {
-      "id": 2,
-      "identifier": "0000000000000000000000000000000000000000000000000000000000000003",
-      "address": "https://localhost:8537",
-      "identityPublicKey": "0305ab8d485cc752394de4981f8a5ae004f2becfea6f432c9a59d5022d8764f0a6"
-    }
-  },
-  "sspClientOptions": {
-    "baseUrl": "http://localhost:5000",
-    "schemaEndpoint": "graphql/spark/rc",
-    "identityPublicKey": "<identityPublicKey from /identity>"
-  }
-}
-```
-
-The GraphQL URL is `/graphql/spark/rc`. The Operator certificates are
-self-signed regtest certificates, so a Node client must set
-`SPARK_DANGEROUSLY_DISABLE_TLS_VERIFICATION=1`; never use that setting outside
-this local profile.
-
-The profile uses public regtest-only operator fixture keys and the admin token
-`regtest-spark-admin-token`. Never reuse either outside a disposable regtest.
+All operator keys and the admin token `regtest-spark-admin-token` are public
+regtest fixtures. Full startup resets volumes and identities; never use real
+funds. The temporary client seed is randomly generated and is not printed.
 
 # Running Nutshell on regtest
 add this ENV variables to your `.env` file (assuming that the `cashu-regtest` directory is in `../` from the `nutshell` directory)

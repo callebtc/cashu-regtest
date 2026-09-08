@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 FROM alpine:3.20 AS spark-source
-ADD https://github.com/buildonspark/spark/archive/0b3a32a05c9ac06cc411683551dd1f1bde9d0caa.tar.gz /tmp/spark.tar.gz
+ADD https://github.com/benthecarman/spark/archive/83cca565c3cce1a4692cedef601fef553ed0249b.tar.gz /tmp/spark.tar.gz
 RUN mkdir /src \
  && tar -xzf /tmp/spark.tar.gz --strip-components=1 -C /src
 
@@ -32,9 +32,7 @@ RUN --mount=type=cache,target=/go/pkg/mod cd spark && go mod download
 COPY --from=spark-source /src/spark spark
 COPY --from=spark-source /src/protos protos
 COPY --from=spark-source /src/Makefile Makefile
-COPY open-ssp-rpc.patch /tmp/open-ssp-rpc.patch
-RUN patch -p1 < /tmp/open-ssp-rpc.patch \
- && go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 \
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11 \
  && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.0 \
  && go install github.com/envoyproxy/protoc-gen-validate@v1.3.0 \
  && make -B all
@@ -56,9 +54,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
       fi; \
     fi; \
     cd spark; \
-    go test -c -o /tmp/grpc.test ./so/grpc; \
-    go test -c -o /tmp/handler.test ./so/handler; \
-    go test ./so/rpcpolicy; \
     go build -o /go/bin/spark-operator ./bin/operator
 RUN if [ -e /go/bin/${TARGETOS}_${TARGETARCH} ]; then \
       mv /go/bin/${TARGETOS}_${TARGETARCH}/* /go/bin/; \

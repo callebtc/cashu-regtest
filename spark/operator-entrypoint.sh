@@ -38,6 +38,7 @@ exec spark-operator \
   -threshold 2 \
   -signer "unix://${socket_path}" \
   -port 8535 \
+  -ssp-grpc-port 8536 \
   -database "postgresql://postgres@spark-postgres:5432/sparkoperator_${index}?sslmode=disable" \
   -ephemeral-database "postgresql://postgres@spark-postgres:5432/spark_ephemeral_${index}?sslmode=disable" \
   -server-cert "/opt/spark/tls/server_${index}.crt" \

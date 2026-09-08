@@ -118,6 +118,10 @@ cashu-bitcoin-init(){
     echo "failed to initialize the Bitcoin wallet" >&2
     return 1
   fi
+  # The provider validates its payout wallet at boot, before Spark funding.
+  if [ "${CASHU_SPARK_REGTEST:-false}" = "true" ]; then
+    bitcoin-cli-sim createwallet ssp-withdrawals >/dev/null || return 1
+  fi
   echo "mining 150 blocks..."
   bitcoin-cli-sim -generate 150 > /dev/null
 }
@@ -138,6 +142,9 @@ cashu-regtest-init(){
 
 cashu-spark-init(){
   wait-for-spark-keyshares || return 1
+  withdrawal_address=$(docker exec cashu-bitcoind-1 bitcoin-cli -regtest -rpcuser=cashu -rpcpassword=cashu \
+    -rpcwallet=ssp-withdrawals getnewaddress '' bech32m) || return 1
+  bitcoin-cli-sim -named sendtoaddress address="$withdrawal_address" amount=1 fee_rate=100 >/dev/null || return 1
   wait-for-spark-ssp || return 1
   wait-for-spark-electrs || return 1
   cashu-spark-fund-ssp || return 1
@@ -210,7 +217,8 @@ wait-for-spark-electrs(){
 
 cashu-spark-fund-ssp(){
   deposit_file=$(mktemp)
-  for amount_sats in 1000 1000 1000 2000 2000 2000 4000 4000 4000 8000 8000 8000; do
+  # One coarse leaf deliberately exercises the SSP's durable change splitting.
+  for amount_sats in 500000; do
     address=$(curl --fail --silent --max-time 30 -X POST \
       -H "Authorization: Bearer $SPARK_ADMIN_TOKEN" \
       http://127.0.0.1:5000/admin/spark/deposit-address | jq -er '.address') || {
@@ -263,50 +271,54 @@ cashu-spark-e2e(){
     return 1
   fi
   cat "$e2e_output_file"
-  e2e_result=$(grep '^{"status":"PASS"' "$e2e_output_file" | tail -n 1)
+  e2e_result=$(grep '^{.*"status":"PASS"' "$e2e_output_file" | tail -n 1)
   rm -f "$e2e_output_file"
   if [ -z "$e2e_result" ]; then
-    echo "Spark SDK test did not emit a PASS result" >&2
+    echo "Breez SDK test did not emit a PASS result" >&2
     return 1
   fi
 
-  send_hash=$(printf '%s' "$e2e_result" | jq -er '.sendPaymentHash') || return 1
-  send_preimage=$(printf '%s' "$e2e_result" | jq -er '.sendPaymentPreimage') || return 1
-  receive_hash=$(printf '%s' "$e2e_result" | jq -er '.receivePaymentHash') || return 1
-
-  payments=$(ldk-cli-sim list-payments)
-  outbound=$(printf '%s' "$payments" | jq \
-    --arg hash "$send_hash" --arg preimage "$send_preimage" \
-    '[.list[]? | select(
-      .direction == "OUTBOUND"
-      and .status == "SUCCEEDED"
-      and .amount_msat == 3000000
-      and .kind.kind.bolt11.hash == $hash
-      and .kind.kind.bolt11.preimage == $preimage
-    )] | length')
-  inbound=$(printf '%s' "$payments" | jq \
-    --arg hash "$receive_hash" \
-    '[.list[]? | select(
-      .direction == "INBOUND"
-      and .status == "SUCCEEDED"
-      and .amount_msat == 5000000
-      and .kind.kind.bolt11.hash == $hash
-    )] | length')
-  if [ "$outbound" -ne 1 ] || [ "$inbound" -ne 1 ]; then
-    echo "ldk-server payment records do not match the SDK/LND settlements" >&2
-    return 1
-  fi
-
-  for i in 0 1 2; do
-    unsettled=$(docker compose exec -T spark-postgres psql \
-      -U postgres -d "sparkoperator_$i" -tAc \
-      "SELECT count(*) FROM transfers WHERE type IN ('PRIMARY_SWAP_V3', 'COUNTER_SWAP_V3') AND status <> 'COMPLETED';" \
-      | tr -d '[:space:]')
-    if [ "$unsettled" -ne 0 ]; then
-      echo "Spark operator $i has $unsettled unsettled swap transfers" >&2
-      return 1
-    fi
+  payments=$(ldk-cli-sim list-payments --number-of-payments 1000) || return 1
+  printf '%s' "$e2e_result" | jq -e '
+    .settlements | length == 4 and
+    (map([.peer, .direction]) | sort == [["cln","INBOUND"],["cln","OUTBOUND"],["lnd","INBOUND"],["lnd","OUTBOUND"]])' >/dev/null || return 1
+  for index in 0 1 2 3; do
+    record=$(printf '%s' "$e2e_result" | jq -c ".settlements[$index]")
+    printf '%s' "$payments" | jq -e --argjson r "$record" '
+      [.list[]? | select(.direction == $r.direction and .status == "SUCCEEDED"
+        and .amount_msat == ($r.sats * 1000) and .kind.kind.bolt11.hash == $r.hash
+        and (if $r.direction == "OUTBOUND" then .kind.kind.bolt11.preimage == $r.preimage else true end))]
+      | length == 1' >/dev/null || {
+        echo "LDK records disagree with Breez/Lightning settlement" >&2
+        return 1
+      }
   done
+
+  wait-for-spark-swaps || return 1
+  echo 'PASS: Breez/LDK settlements agree and all three operators have no incomplete primary/counter swaps'
+}
+
+wait-for-spark-swaps(){
+  local attempt i unsettled ready
+  # Wallet completion can precede the operators' final background transition.
+  for attempt in $(seq 1 60); do
+    ready=true
+    for i in 0 1 2; do
+      unsettled=$(docker compose exec -T spark-postgres psql \
+        -U postgres -d "sparkoperator_$i" -tAc \
+        "SELECT count(*) FROM transfers WHERE type IN ('PRIMARY_SWAP_V3', 'COUNTER_SWAP_V3') AND status <> 'COMPLETED';") || return 1
+      unsettled=$(printf '%s' "$unsettled" | tr -d '[:space:]')
+      case "$unsettled" in
+        0) ;;
+        ''|*[!0-9]*) echo "Invalid Spark operator $i settlement response" >&2; return 1 ;;
+        *) ready=false ;;
+      esac
+    done
+    [ "$ready" = true ] && return 0
+    sleep 2
+  done
+  echo 'Timed out waiting for Spark primary/counter swaps to complete' >&2
+  return 1
 }
 
 cashu-lightning-sync(){
