@@ -82,9 +82,8 @@ trap optional_failure_logs EXIT
 
 cashu-regtest-start || exit 1
 if [ "$spark_enabled" = "true" ]; then
-  cashu-spark-e2e || exit 1
   cashu-lightning-sync || exit 1
-  blockheight=225
+  blockheight=222
 fi
 if [ "$bark_enabled" = "true" ]; then
   cashu-lightning-sync || exit 1
@@ -133,6 +132,9 @@ fi
 run "LDK ready channels" "6" $(ldk-cli-sim list-channels | jq -r '[.channels[]? | select(.is_channel_ready == true)] | length')
 
 # return non-zero exit code if a test fails
+if [ "$failed" = "false" ] && [ "$spark_enabled" = "true" ]; then
+  cashu-spark-e2e || exit 1
+fi
 if [ "$failed" = "false" ]; then
   bash ldk/e2e.sh || exit 1
   bash fees/e2e.sh || exit 1

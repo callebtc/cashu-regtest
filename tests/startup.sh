@@ -186,3 +186,52 @@ echo 'LDK channel-funding wallet sync regression test passed'
   fi
 )
 echo 'Fee topology failure, stale height, and stale policy regressions passed'
+
+(
+  export CASHU_SPARK_REGTEST=true
+  bitcoin-cli-sim() {
+    case "$*" in
+      'createwallet cashu') return 0 ;;
+      'createwallet ssp-withdrawals') return 1 ;;
+      *) echo 'ERROR: continued after withdrawal wallet failure' >&2; exit 99 ;;
+    esac
+  }
+  if cashu-bitcoin-init; then exit 1; fi
+)
+echo 'Spark withdrawal wallet initialization failure regression passed'
+
+(
+  # Fail closed if independent backend evidence is absent or disagrees with Breez.
+  fixture=$(jq -nc '{status:"PASS", settlements:
+    ["lnd","cln"] | map(. as $peer | ["INBOUND","OUTBOUND"] | map(
+      {peer:$peer,direction:.,sats:(if . == "INBOUND" then 5000 else 3000 end),
+       hash:($peer + .),preimage:"fixture-preimage"})) | flatten}')
+  docker() {
+    case " $* " in
+      *' run '*) printf '%s\n' "$fixture" ;;
+      *' exec '*)
+        case "$scenario" in
+          db-failure) return 1 ;;
+          incomplete|settling) echo 1 ;;
+          empty-db-response) : ;;
+          *) echo 0 ;;
+        esac ;;
+      *) return 1 ;;
+    esac
+  }
+  ldk-cli-sim() {
+    if [ "$scenario" = ldk-failure ]; then return 1; fi
+    printf '%s' "$fixture" | jq --arg scenario "$scenario" '{list: [.settlements[] |
+      {direction, status:(if $scenario == "unsettled" then "PENDING" else "SUCCEEDED" end),
+       amount_msat:(.sats * 1000), kind:{kind:{bolt11:{hash,preimage}}}}]}'
+  }
+  sleep() { if [ "$scenario" = settling ]; then scenario=clean; fi; }
+  for scenario in clean settling db-failure incomplete empty-db-response ldk-failure unsettled; do
+    if cashu-spark-e2e >/dev/null 2>&1; then
+      [ "$scenario" = clean ] || { echo "ERROR: accepted Spark $scenario" >&2; exit 1; }
+    else
+      [ "$scenario" != clean ] || { echo 'ERROR: rejected valid Spark settlements' >&2; exit 1; }
+    fi
+  done
+)
+echo 'Breez backend settlement and operator-query failure regressions passed'

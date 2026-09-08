@@ -1,7 +1,7 @@
 x-spark-operator-common: &spark-operator-common
   profiles:
     - spark
-  image: cashu-spark-operator:0b3a32a05c9ac06cc411683551dd1f1bde9d0caa-open-ssp-rpc
+  image: cashu-spark-operator:83cca565c3cce1a4692cedef601fef553ed0249b
   build:
     context: ./spark/operator-build
     dockerfile: Dockerfile
@@ -373,10 +373,10 @@ services:
   spark-ssp:
     profiles:
       - spark
-    image: cashu-open-ssp:04f8330b0bd76335c3b9798b73f2fc0a3622d7d5
+    image: cashu-open-ssp:25eec4a8c492a16a4d1962b7115430181a8200ad
     build:
-      context: "https://github.com/benthecarman/open-ssp.git#04f8330b0bd76335c3b9798b73f2fc0a3622d7d5"
-      dockerfile: ssp.Dockerfile
+      context: ./spark/ssp-build
+      dockerfile: Dockerfile
     depends_on:
       spark-operator-0:
         condition: service_started
@@ -399,6 +399,12 @@ services:
       SSP_NETWORK: REGTEST
       SSP_DATA_DIR: /data
       SSP_PUBLIC_URL: http://spark-ssp:5000
+      COOP_BITCOIN_RPC_URL: http://bitcoind:18443/wallet/ssp-withdrawals
+      COOP_BITCOIN_RPC_USER: cashu
+      COOP_BITCOIN_RPC_PASSWORD: cashu
+      SSP_OPERATOR_HOSTS: spark-operator-0.minikube.local:8536,spark-operator-1.minikube.local:8536,spark-operator-2.minikube.local:8536
+      SSP_OPERATOR_CERT_FILES: /tls/server_0.crt,/tls/server_1.crt,/tls/server_2.crt
+      SSP_MIN_SPLIT_CHILD_SATS: "1"
       SPARK_MNEMONIC_FILE: /data/spark.mnemonic
       SPARK_MNEMONIC_REQUIRED: "0"
       SO_HOSTS: spark-operator-0.minikube.local:8535,spark-operator-1.minikube.local:8535,spark-operator-2.minikube.local:8535
@@ -411,7 +417,6 @@ services:
       SSP_SWAP_FEE_SATS: "0"
       MAX_SWAP_TOTAL_SATS: "1000000"
       SSP_FROST_THRESHOLD: "2"
-      SSP_FROST_OPERATORS: '[{"id":0,"identifier":"0000000000000000000000000000000000000000000000000000000000000001","identityPublicKey":"0322ca18fc489ae25418a0e768273c2c61cabb823edfb14feb891e9bec62016510"},{"id":1,"identifier":"0000000000000000000000000000000000000000000000000000000000000002","identityPublicKey":"0341727a6c41b168f07eb50865ab8c397a53c7eef628ac1020956b705e43b6cb27"},{"id":2,"identifier":"0000000000000000000000000000000000000000000000000000000000000003","identityPublicKey":"0305ab8d485cc752394de4981f8a5ae004f2becfea6f432c9a59d5022d8764f0a6"}]'
       RUST_LOG: info
     volumes:
       - spark-ssp-data:/data
@@ -422,24 +427,14 @@ services:
   spark-test:
     profiles:
       - spark-test
-    image: cashu-spark-test:06614d2e3535385f15aef3749b2c8a780f679ebc
+    image: cashu-breez-test:a3fac0e8f1f38e7e3dca110a22f37dd3264e2bde
     build:
       context: ./spark/test
       dockerfile: Dockerfile
-    environment:
-      SPARK_SDK_DIST: /opt/spark-sdk/sdks/js/packages/spark-sdk/dist/index.node.js
-      SSP_BASE_URL: http://spark-ssp:5000
-      BITCOIN_RPC_URL: http://bitcoind:18443
-      BITCOIN_RPC_USER: cashu
-      BITCOIN_RPC_PASSWORD: cashu
-      BITCOIN_RPC_WALLET: cashu
-      ELECTRS_URL: http://spark-electrs:3002
-      LND_REST_HOST: lnd-1
-      LND_REST_PORT: "8081"
-      LND_DATA_DIR: /lnd
-      SPARK_DANGEROUSLY_DISABLE_TLS_VERIFICATION: "1"
     volumes:
       - ./data/lnd-1:/lnd:ro
+      - ./data/clightning-2:/cln:ro
+      - spark-tls-certs:/tls:ro
     depends_on:
       spark-ssp:
         condition: service_healthy
