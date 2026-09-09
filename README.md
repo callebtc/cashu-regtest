@@ -123,8 +123,11 @@ cd cashu-regtest
 ## Prebuilt images
 
 `.github/workflows/images.yml` builds every service the compose file would otherwise compile from
-source and pushes it to this repository's GHCR namespace, keeping the content tag the compose file
-already carries, so an image is rebuilt only when its pin moves.
+source and pushes it to this repository's GHCR namespace, keeping the tag the compose file already
+carries. It runs on pushes to `main` that change the compose file, listed build directories, or the
+publishing workflow, and can also be run manually on `main`. Manual runs on other branches are
+skipped. Each run builds and pushes all targets, reusing cached layers where possible; changing
+build inputs can update an existing tag.
 
 | Image | Services |
 | --- | --- |
@@ -142,6 +145,9 @@ images the enabled profiles need and retags each to the local name, so compose f
 and skips the build. A failed pull is a warning and compose builds from source exactly as before.
 
 * `CASHU_REGTEST_IMAGE_PREFIX` overrides the registry path; set it empty to never pull.
+  This repository's regtest CI sets it empty so fresh runners build the checkout's source,
+  including Dockerfile changes that leave image tags unchanged. Downstream callers of `start.sh`
+  still pull prebuilt images by default.
 * linux/amd64 only for now. Other architectures skip the pull and build native images.
 * A new package is private on its first push: a maintainer has to make each one public once under
   the repository's package settings, otherwise every pull fails and every start builds.
