@@ -8,8 +8,11 @@ on:
     branches:
       - "*"
 
-# Each job builds the compose file's `build:` services from source until the images published by
-# images.yml are public packages, at which point docker-scripts.sh pulls them instead.
+# Test this checkout's build inputs, including Dockerfile changes that keep the same image tag.
+# Fresh hosted runners build from source when prebuilt image pulling is disabled.
+env:
+  CASHU_REGTEST_IMAGE_PREFIX: ""
+
 jobs:
   arkade-regtest:
     runs-on: ubuntu-latest

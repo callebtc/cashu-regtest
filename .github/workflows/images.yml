@@ -2,8 +2,8 @@ name: images
 
 # Builds every service that carries a `build:` section in docker-compose.yml and pushes it to this
 # repository's GHCR namespace, so `docker-scripts.sh` can pull instead of compiling. Each image keeps
-# the content tag the compose file already gives it (the upstream commit of the software it builds),
-# so an image is rebuilt only when that pin moves.
+# the tag the compose file already gives it. Each run builds and pushes all targets, reusing
+# cached layers where possible; build input changes can update an existing tag.
 
 on:
   push:
@@ -23,6 +23,8 @@ on:
 
 jobs:
   images:
+    # workflow_dispatch can select another branch; only main may publish shared image tags.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # Cold, this compiles several Rust and Go projects on one runner, same allowance as ci.yml.
     timeout-minutes: 90
