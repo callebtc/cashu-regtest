@@ -25,7 +25,8 @@ wait-for-ldk-wallet-spend(){
     [ "$balance" -le "$((before - amount))" ] && return 0
     sleep 1
   done
-  echo 'LDK wallet funding sync timed out' >&2
+  echo "LDK wallet funding sync timed out: balance=$balance, expected <= $((before - amount))" >&2
+  ldk-cli-sim list-channels >&2 || true
   return 1
 }
 
@@ -76,12 +77,15 @@ cashu-ldk-init(){
         sleep 1
       done
       [ "$ready" = true ] || { echo "LDK channel funding timed out: $peer-$i" >&2; return 1; }
-      # This pinned LDK Node updates its BDK wallet asynchronously. Broadcast
-      # alone does not mark the selected inputs spent in the wallet yet.
+      # The pinned LDK mempool sync can miss a second funding transaction with
+      # the same seconds-resolution timestamp. Confirm each spend so wallet
+      # sync observes it through a block before selecting the next inputs.
+      bitcoin-cli-sim -generate 1 >/dev/null || return 1
       wait-for-ldk-wallet-spend "$before" 24000000 || return 1
     done
   done
-  bitcoin-cli-sim -generate 6 >/dev/null || return 1
+  # The final funding transaction already has one confirmation.
+  bitcoin-cli-sim -generate 5 >/dev/null || return 1
   wait-for-ldk-height || return 1
   for attempt in $(seq 1 120); do
     channels=$(ldk-cli-sim list-channels) || return 1
