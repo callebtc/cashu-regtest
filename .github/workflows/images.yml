@@ -1,0 +1,109 @@
+name: images
+
+# Builds every service that carries a `build:` section in docker-compose.yml and pushes it to this
+# repository's GHCR namespace, so `docker-scripts.sh` can pull instead of compiling. Each image keeps
+# the content tag the compose file already gives it (the upstream commit of the software it builds),
+# so an image is rebuilt only when that pin moves.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docker-compose.yml
+      - spark/operator-build/**
+      - spark/ssp-build/**
+      - spark/electrs-build/**
+      - spark/test/**
+      - bark/build/**
+      - bark/cln-build/**
+      - arkade/client-build/**
+      - .github/workflows/images.yml
+  workflow_dispatch:
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    # Cold, this compiles several Rust and Go projects on one runner, same allowance as ci.yml.
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # The build set and the tags come out of the compose file, never a list kept here: the same
+      # derivation runs in docker-scripts.sh when it decides what to pull, and a hardcoded copy that
+      # drifted would silently fall back to building.
+      #
+      # linux/amd64 only. The Spark operator Dockerfile cross-compiles, but electrs, ldk-server,
+      # open-ssp, bark and the test clients would need QEMU for arm64, which costs hours rather than
+      # minutes. Runners are amd64; arm64 users build locally. arm64 images are a follow-up.
+      - name: Derive bake targets from the compose file
+        id: targets
+        env:
+          OWNER: ${{ github.repository_owner }}
+          COMPOSE_PROJECT_NAME: cashu
+        run: |
+          set -euo pipefail
+          prefix="ghcr.io/$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')/cashu-regtest"
+          docker compose --profile "*" config --format json > compose.json
+          # One target per distinct image: the three operators share one, as do ldk/ldk-fee and
+          # bark-server/bark-wallet. Pushing the same ref from two targets is a race.
+          jq --arg prefix "$prefix" '
+              { target: (
+                  [ .services | to_entries[] | select(.value.build != null) ]
+                  | group_by(.value.image) | map(.[0])
+                  | map({ (.key): {
+                      tags: [ $prefix + "/" + .value.image ],
+                      platforms: [ "linux/amd64" ],
+                      "cache-from": [ "type=gha,scope=" + (.value.image | split(":")[0]) ],
+                      "cache-to": [ "type=gha,mode=max,scope=" + (.value.image | split(":")[0]) ]
+                    } })
+                  | add
+              ) }' compose.json > bake-override.json
+          # Comma separated: bake-action splits its `targets` input on commas and newlines, not
+          # spaces, so a space separated list arrives as one nonexistent target.
+          names="$(jq -r '.target | keys | join(",")' bake-override.json)"
+          if [ -z "$names" ]; then
+            echo "error: no service in docker-compose.yml carries a build section." >&2
+            echo "       Either the compose file changed shape or config failed; fix this rather" >&2
+            echo "       than letting the job publish nothing." >&2
+            exit 1
+          fi
+          echo "names=$names" >> "$GITHUB_OUTPUT"
+          jq -r '.target | to_entries[] | "\(.key) -> \(.value.tags[0])"' bake-override.json
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # bake reads the compose file's own `build:` sections, including ldk's `dockerfile_inline` and
+      # its git-URL context, which no build-push-action invocation can express. `source: .` is
+      # load-bearing: bake-action otherwise builds from its default git context, where there is no
+      # docker-compose.yml.
+      - name: Build and push
+        uses: docker/bake-action@v7
+        with:
+          source: .
+          files: |
+            docker-compose.yml
+            bake-override.json
+          targets: ${{ steps.targets.outputs.names }}
+          push: true
+
+      - name: Summary
+        run: |
+          set -euo pipefail
+          {
+            echo "### Images published"
+            echo ""
+            jq -r '.target | to_entries[] | "- `\(.value.tags[0])`  (service `\(.key)`)"' bake-override.json
+            echo ""
+            echo "New packages are private until made public once in the repository's package"
+            echo "settings; until then \`cashu-regtest-pull-images\` falls back to building."
+          } >> "$GITHUB_STEP_SUMMARY"

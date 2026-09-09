@@ -120,6 +120,32 @@ cd cashu-regtest
 ./start.sh  # start the regtest and also run tests
 ```
 
+## Prebuilt images
+
+`.github/workflows/images.yml` builds every service the compose file would otherwise compile from
+source and pushes it to this repository's GHCR namespace, keeping the content tag the compose file
+already carries, so an image is rebuilt only when its pin moves.
+
+| Image | Services |
+| --- | --- |
+| `ghcr.io/callebtc/cashu-regtest/cashu-spark-operator` | `spark-operator-0`, `spark-operator-1`, `spark-operator-2` |
+| `ghcr.io/callebtc/cashu-regtest/cashu-spark-electrs` | `spark-electrs` |
+| `ghcr.io/callebtc/cashu-regtest/cashu-open-ssp` | `spark-ssp` |
+| `ghcr.io/callebtc/cashu-regtest/cashu-breez-test` | `spark-test` |
+| `ghcr.io/callebtc/cashu-regtest/cashu-ldk-server` | `ldk`, `ldk-fee` |
+| `ghcr.io/callebtc/cashu-regtest/cashu-bark` | `bark-server`, `bark-wallet` |
+| `ghcr.io/callebtc/cashu-regtest/cashu-bark-cln` | `bark-cln` |
+| `ghcr.io/callebtc/cashu-regtest/cashu-arkade-client` | `arkade-test` |
+
+`cashu-regtest-start` runs `cashu-regtest-pull-images` before `docker compose up`, which pulls the
+images the enabled profiles need and retags each to the local name, so compose finds them present
+and skips the build. A failed pull is a warning and compose builds from source exactly as before.
+
+* `CASHU_REGTEST_IMAGE_PREFIX` overrides the registry path; set it empty to never pull.
+* linux/amd64 only for now. Other architectures skip the pull and build native images.
+* A new package is private on its first push: a maintainer has to make each one public once under
+  the repository's package settings, otherwise every pull fails and every start builds.
+
 ## Optional Arkade regtest
 
 Run `./start.sh --arkade` to start Arkade with real Boltz/Fulmine Lightning

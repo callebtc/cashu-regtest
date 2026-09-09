@@ -8,6 +8,8 @@ on:
     branches:
       - "*"
 
+# Each job builds the compose file's `build:` services from source until the images published by
+# images.yml are public packages, at which point docker-scripts.sh pulls them instead.
 jobs:
   arkade-regtest:
     runs-on: ubuntu-latest
