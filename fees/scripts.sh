@@ -50,27 +50,81 @@ fee-leaves-isolated(){
     '(.channels | length == 1) and .channels[0].counterparty_node_id == $hub and .channels[0].is_usable' >/dev/null
 }
 fee-policies-ready(){
-  local hub channel channels cln_graph scid
+  local hub channel channels cln_graph scid policy ready=true
   hub=$(fee-hub-cli-sim getinfo | jq -er '.identity_pubkey') || return 1
   fee-hub-cli-sim listchannels | jq -e '.channels | length == 4' >/dev/null || return 1
   # LND 0.21 exposes the wire channel ID as chan_id; graph APIs use scid.
   channels=$(fee-hub-cli-sim listchannels | jq -er '.channels[].scid') || return 1
   cln_graph=$(lightning-cli-sim 4 listchannels) || return 1
   for channel in $channels; do
-    lncli-sim 4 getchaninfo "$channel" | jq -e --arg hub "$hub" '
+    policy=$(lncli-sim 4 getchaninfo "$channel" | jq -c --arg hub "$hub" '
       (if .node1_pub == $hub then .node1_policy else .node2_policy end) |
-      .disabled == false and (.fee_base_msat | tonumber) == 1000
-      and (.fee_rate_milli_msat | tonumber) == 1000
-      and ((.inbound_fee_base_msat // 0) | tonumber) == 0
-      and ((.inbound_fee_rate_milli_msat // 0) | tonumber) == 0' >/dev/null || return 1
+      {enabled:(.disabled == false), base_msat:.fee_base_msat, ppm:.fee_rate_milli_msat,
+       inbound_base_msat:(.inbound_fee_base_msat // 0), inbound_ppm:(.inbound_fee_rate_milli_msat // 0)}')
+    fee-policy-ready lnd-4 "$channel" "$policy" || ready=false
     scid="$((channel >> 40))x$(((channel >> 16) & 16777215))x$((channel & 65535))"
-    printf '%s' "$cln_graph" | jq -e --arg hub "$hub" --arg scid "$scid" '
-      any(.channels[]; .source == $hub and .short_channel_id == $scid and .active
-        and .base_fee_millisatoshi == 1000 and .fee_per_millionth == 1000)' >/dev/null || return 1
-    ldk-fee-cli-sim graph-get-channel "$channel" | jq -e --arg hub "$hub" '
+    policy=$(printf '%s' "$cln_graph" | jq -c --arg hub "$hub" --arg scid "$scid" '
+      [.channels[] | select(.source == $hub and .short_channel_id == $scid)] | first |
+      {enabled:.active, base_msat:.base_fee_millisatoshi, ppm:.fee_per_millionth}')
+    fee-policy-ready clightning-4 "$channel" "$policy" || ready=false
+    policy=$(ldk-fee-cli-sim graph-get-channel "$channel" | jq -c --arg hub "$hub" '
       .channel | (if .node_one == $hub then .one_to_two else .two_to_one end) |
-      .enabled and .fees.base_msat == 1000 and .fees.proportional_millionths == 1000' >/dev/null || return 1
+      {enabled, base_msat:.fees.base_msat, ppm:.fees.proportional_millionths}')
+    fee-policy-ready ldk-fee "$channel" "$policy" || ready=false
   done
+  [ "$ready" = true ]
+}
+fee-policy-ready(){
+  local peer=$1 channel=$2 policy=$3
+  if [ -n "$policy" ] && printf '%s' "$policy" | jq -e '
+    .enabled == true and (.base_msat | tonumber) == 1000 and (.ppm | tonumber) == 1000
+    and ((.inbound_base_msat // 0) | tonumber) == 0
+    and ((.inbound_ppm // 0) | tonumber) == 0' >/dev/null; then
+    return 0
+  fi
+  echo "Waiting for $peer channel $channel hub policy: ${policy:-missing}" >&2
+  return 1
+}
+fee-reconnect-leaves(){
+  local peer node host attempt peers disconnected
+  # A new peer connection restarts gossip synchronization against the now
+  # populated hub graph. Only run this before the payment tests begin.
+  for peer in lnd cln ldk; do
+    node=$(fee-node-id "$peer") || return 1
+    case "$peer" in lnd) host=lnd-4;; cln) host=clightning-4;; ldk) host=ldk-fee;; esac
+    echo "Restarting fee gossip sync with $host" >&2
+    fee-hub-cli-sim disconnect "$node" >/dev/null 2>&1 || true
+    # DisconnectPeer is asynchronous: don't reuse the closing connection.
+    disconnected=false
+    for attempt in $(seq 1 10); do
+      peers=$(fee-hub-cli-sim listpeers) || return 1
+      if printf '%s' "$peers" | jq -e --arg node "$node" 'all(.peers[]; .pub_key != $node)' >/dev/null; then
+        disconnected=true
+        break
+      fi
+      sleep 1
+    done
+    [ "$disconnected" = true ] || { echo "Failed to disconnect $host" >&2; return 1; }
+    # The remote may reconnect first. Accept that only if it is actually listed.
+    if ! fee-hub-cli-sim connect "$node@$host:9735" >/dev/null; then
+      peers=$(fee-hub-cli-sim listpeers) || return 1
+      printf '%s' "$peers" | jq -e --arg node "$node" 'any(.peers[]; .pub_key == $node)' >/dev/null || return 1
+    fi
+  done
+}
+wait-for-fee-policies(){
+  local attempt
+  for attempt in $(seq 1 120); do
+    if fee-policies-ready && fee-channels-ready && fee-leaves-isolated; then return 0; fi
+    # Give ordinary announcement batching time to finish, then retry gossip
+    # once instead of spending the whole timeout polling an unchanged graph.
+    if [ "$attempt" = 60 ]; then
+      fee-reconnect-leaves || return 1
+    fi
+    sleep 2
+  done
+  echo 'Timed out: fee-policies-ready' >&2
+  return 1
 }
 fee-reserves-ready(){
   fee-hub-cli-sim walletbalance | jq -e '(.confirmed_balance | tonumber) >= 120000000' >/dev/null &&
@@ -109,15 +163,29 @@ cashu-fees-init(){
   wait-for-ldk-height || return 1
   fee-wait fee-height-ready "$(bitcoin-cli-sim getblockcount)" || return 1
   fee-wait fee-channels-ready || return 1
-  fee-hub-cli-sim updatechanpolicy --base_fee_msat 1000 --fee_rate_ppm 1000 \
-    --inbound_base_fee_msat 0 --inbound_fee_rate_ppm 0 --time_lock_delta 80 >/dev/null || return 1
+  result=$(fee-hub-cli-sim updatechanpolicy --base_fee_msat 1000 --fee_rate_ppm 1000 \
+    --inbound_base_fee_msat 0 --inbound_fee_rate_ppm 0 --time_lock_delta 80) || return 1
+  if [ -z "$result" ] || ! printf '%s' "$result" | jq -e '.failed_updates == []' >/dev/null; then
+    echo "Fee policy update failed: $result" >&2
+    return 1
+  fi
   fee-wait fee-leaves-isolated || return 1
-  fee-wait fee-policies-ready || return 1
+  wait-for-fee-policies || return 1
   echo 'PASS: three isolated leaves and four balanced hub channels advertise 1 sat + 1,000 ppm'
 }
 fee-diagnostics(){
+  local channel
   docker compose logs --tail=120 fee-hub lnd-4 clightning-4 ldk-fee
+  echo 'fee-hub channels and graph'
   fee-hub-cli-sim listchannels
   fee-hub-cli-sim describegraph
   fee-hub-cli-sim fwdinghistory --start_time 0 --max_events 50000
+  echo 'lnd-4 graph'
+  lncli-sim 4 describegraph
+  echo 'clightning-4 graph'
+  lightning-cli-sim 4 listchannels
+  for channel in $(fee-hub-cli-sim listchannels | jq -r '.channels[].scid'); do
+    echo "ldk-fee graph channel $channel"
+    ldk-fee-cli-sim graph-get-channel "$channel"
+  done
 }

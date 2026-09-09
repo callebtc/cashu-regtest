@@ -47,7 +47,7 @@ run(){
 }
 
 failed="false"
-blockheight=219
+blockheight=224
 utxos=3
 channel_size=24000000 # 0.024 btc
 balance_size=12000000 # 0.012 btc
@@ -83,7 +83,7 @@ trap optional_failure_logs EXIT
 cashu-regtest-start || exit 1
 if [ "$spark_enabled" = "true" ]; then
   cashu-lightning-sync || exit 1
-  blockheight=222
+  blockheight=227
 fi
 if [ "$bark_enabled" = "true" ]; then
   cashu-lightning-sync || exit 1

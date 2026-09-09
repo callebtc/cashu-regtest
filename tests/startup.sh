@@ -155,6 +155,47 @@ echo 'LDK startup failure and chain-height regression tests passed'
 echo 'LDK channel-funding wallet sync regression test passed'
 
 (
+  # Model a wallet which never sees unconfirmed funding transactions. Each
+  # spend must be mined before the next channel can select wallet inputs.
+  height=201 opened=0 confirmed=0
+  sleep() { :; }
+  bitcoin-cli-sim() {
+    case "$1" in
+      -generate)
+        height=$((height + $2))
+        confirmed=$opened ;;
+      getblockcount) echo "$height" ;;
+      getmempoolentry|-named) echo '{}' ;;
+      *) return 1 ;;
+    esac
+  }
+  ldk-cli-sim() {
+    case "$1" in
+      get-node-info) printf '{"network":"REGTEST","current_best_block":{"height":%s}}\n' "$height" ;;
+      onchain-receive) echo '{"address":"funding-address"}' ;;
+      get-balances)
+        printf '{"spendable_onchain_balance_sats":%s,"total_onchain_balance_sats":%s}\n' \
+          "$((180000000 - confirmed * 24001000))" "$((180000000 - confirmed * 24001000))" ;;
+      open-channel)
+        [ "$opened" = "$confirmed" ] || { echo 'ERROR: reused unconfirmed wallet inputs' >&2; return 1; }
+        opened=$((opened + 1)) ;;
+      list-channels)
+        jq -n --argjson count "$opened" '{channels:[range($count) |
+          {counterparty_node_id:((if . < 3 then "lnd-" else "cln-" end) + (. % 3 + 1 | tostring)),
+           funding_txo:{txid:"funding-tx"}, is_channel_ready:true, is_usable:true,
+           is_outbound:true, is_announced:true, channel_value_sats:24000000,
+           outbound_capacity_msat:12000000000, inbound_capacity_msat:12000000000}]}' ;;
+      *) return 1 ;;
+    esac
+  }
+  lncli-sim() { printf '{"identity_pubkey":"lnd-%s","block_height":%s}\n' "$1" "$height"; }
+  lightning-cli-sim() { printf '{"id":"cln-%s","blockheight":%s}\n' "$1" "$height"; }
+  cashu-ldk-init >/dev/null
+  [ "$opened" = 6 ] && [ "$confirmed" = 6 ] && [ "$height" = 215 ]
+)
+echo 'LDK funding confirmation regression passed without mempool wallet updates'
+
+(
   cashu-bitcoin-init() { :; }
   cashu-lightning-sync() { :; }
   cashu-lightning-init() { :; }
@@ -181,11 +222,79 @@ echo 'LDK channel-funding wallet sync regression test passed'
   }
   lightning-cli-sim() { echo '{"channels":[]}'; }
   lncli-sim() { echo '{"node1_pub":"hub","node1_policy":{"disabled":false,"fee_base_msat":"1000","fee_rate_milli_msat":"0"}}'; }
+  ldk-fee-cli-sim() { echo '{"channel":null}'; }
   if fee-policies-ready >/dev/null 2>&1; then
     echo 'ERROR: stale zero-fee graph accepted' >&2; exit 1
   fi
 )
 echo 'Fee topology failure, stale height, and stale policy regressions passed'
+
+(
+  for policy in '' 'null' '{}' \
+    '{"enabled":false,"base_msat":1000,"ppm":1000}' \
+    '{"enabled":true,"base_msat":1000,"ppm":0}' \
+    '{"enabled":true,"base_msat":1000,"ppm":1000,"inbound_ppm":-1000}'; do
+    if fee-policy-ready test-leaf 123 "$policy" >/dev/null 2>&1; then
+      echo "ERROR: invalid fee policy accepted: $policy" >&2; exit 1
+    fi
+  done
+  fee-policy-ready test-leaf 123 '{"enabled":true,"base_msat":"1000","ppm":"1000"}'
+)
+echo 'Missing, disabled, and stale fee policy regression tests passed'
+
+(
+  sleep() { :; }
+  fee-channels-ready() { [ "$scenario" != inactive ]; }
+  fee-leaves-isolated() { :; }
+  fee-policies-ready() {
+    polls=$((polls + 1))
+    [ "$scenario" = healthy ] || { [ "$scenario" != stuck ] && [ "$reconnects" = 1 ]; }
+  }
+  fee-reconnect-leaves() { reconnects=$((reconnects + 1)); }
+  for scenario in healthy recovered stuck inactive; do
+    polls=0 reconnects=0
+    if wait-for-fee-policies >/dev/null 2>&1; then
+      [ "$scenario" = healthy ] || [ "$scenario" = recovered ]
+    else
+      [ "$scenario" = stuck ] || [ "$scenario" = inactive ]
+    fi
+    case "$scenario" in
+      healthy) [ "$polls" = 1 ] && [ "$reconnects" = 0 ] ;;
+      recovered) [ "$polls" = 61 ] && [ "$reconnects" = 1 ] ;;
+      *) [ "$polls" = 120 ] && [ "$reconnects" = 1 ] ;;
+    esac
+  done
+)
+echo 'Fee gossip recovery is bounded and still requires ready policies and channels'
+
+(
+  fee-node-id() { echo "$1"; }
+  sleep() { connected=false; }
+  fee-hub-cli-sim() {
+    case "$1" in
+      disconnect) current_peer=$2; connected=true ;;
+      listpeers)
+        jq -n --arg peer "$current_peer" --argjson connected "$connected" \
+          '{peers:(if $connected then [{pub_key:$peer}] else [] end)}' ;;
+      connect)
+        connects=$((connects + 1))
+        connected=true
+        case "$scenario" in
+          remote-reconnected) return 1 ;;
+          failed) connected=false; return 1 ;;
+        esac ;;
+    esac
+  }
+  for scenario in normal remote-reconnected failed; do
+    connects=0
+    if fee-reconnect-leaves >/dev/null 2>&1; then
+      [ "$scenario" != failed ] && [ "$connects" = 3 ]
+    else
+      [ "$scenario" = failed ] && [ "$connects" = 1 ]
+    fi
+  done
+)
+echo 'Fee reconnect waits for disconnect and verifies competing remote connections'
 
 (
   export CASHU_SPARK_REGTEST=true

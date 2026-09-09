@@ -42,9 +42,11 @@ provides its daemon and authenticated CLI. The source build pins server
 
 LDK opens six public 24,000,000-sat channels, one to each LND and CLN node,
 pushing 12,000,000 sats to each peer. Startup funds six confirmed Bitcoin
-UTXOs, waits for every funding transaction before mining, then checks both
-channel readiness and exact chain height. The default baseline is height
-219, with core LND channel counts 7/3/4 and three channels per core CLN node.
+UTXOs, confirms each channel funding transaction before opening the next,
+then checks both channel readiness and exact chain height. Confirming each
+spend avoids a same-second mempool sync race in the pinned LDK wallet. The
+default baseline is height 224, with core LND channel counts 7/3/4 and three
+channels per core CLN node.
 
 Every start tests twelve real payments: LDK pays each peer 3,000 sats and
 each peer pays LDK 5,000 sats. Both sides must report settlement with matching
@@ -78,7 +80,10 @@ The hub charges `1,000 msat + floor(amount_msat * 1,000 / 1,000,000)` on
 each outgoing channel, with zero inbound discount. A 10,000-sat invoice costs
 11 sats to route; a 100,000-sat invoice costs 101 sats. The receiver gets the
 full invoice amount. Startup checks fee-policy propagation in all three leaf
-routing graphs before testing payments.
+routing graphs before testing payments. If gossip stalls, startup reconnects
+the leaves once to restart synchronization, then rechecks policies and channel
+readiness. Failed checks identify the peer and channel; failure diagnostics
+include the leaf graphs as well as the hub graph.
 
 Acceptance tests pay every ordered leaf pair at both amounts (12 payments),
 then pay both ways between `lnd-1` and the CLN leaf (two more). They verify
@@ -230,7 +235,7 @@ primary/counter swaps. The fixture never constructs wallet GraphQL calls or
 signatures itself. SDK deposit/withdrawal fees are included in balance checks;
 funding exact denominations is no longer required.
 
-The Spark initialization adds three blocks (baseline 222 without Bark).
+The Spark initialization adds three blocks (baseline 227 without Bark).
 Its payment tests mine further blocks after baseline assertions. The normal
 `./start.sh` topology and fee-hub tests are unchanged. Optional profiles can
 still be combined with `--spark --bark --arkade`. This checks confirmed deposits
