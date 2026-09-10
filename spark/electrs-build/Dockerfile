@@ -11,8 +11,9 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends clang cmake librocksdb-dev \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=source /src/ .
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/build/target \
+# Scope caches per image for parallel Bake targets; lock concurrent builds of this image.
+RUN --mount=type=cache,id=cashu-spark-electrs-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cashu-spark-electrs-cargo-target,target=/build/target,sharing=locked \
     cargo build --release --locked --jobs 2 --bin electrs \
  && cp target/release/electrs /tmp/electrs
 
