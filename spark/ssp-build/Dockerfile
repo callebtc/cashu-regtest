@@ -10,8 +10,9 @@ RUN tar -xzf /tmp/sdk.tar.gz --strip-components=1 -C /app/vendor/breez-sdk
 ADD https://github.com/benthecarman/spark/archive/83cca565c3cce1a4692cedef601fef553ed0249b.tar.gz /tmp/spark.tar.gz
 RUN tar -xzf /tmp/spark.tar.gz --strip-components=1 -C /app/vendor/spark
 ENV CARGO_BUILD_JOBS=2
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+# Scope caches per image for parallel Bake targets; lock concurrent builds of this image.
+RUN --mount=type=cache,id=cashu-open-ssp-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cashu-open-ssp-cargo-git,target=/usr/local/cargo/git,sharing=locked \
     cargo build --release --locked
 
 FROM debian:bookworm-slim

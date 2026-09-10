@@ -7,8 +7,9 @@ WORKDIR /app
 ENV CARGO_BUILD_JOBS=2
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+# Scope caches per image for parallel Bake targets; lock concurrent builds of this image.
+RUN --mount=type=cache,id=cashu-breez-test-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cashu-breez-test-cargo-git,target=/usr/local/cargo/git,sharing=locked \
     cargo build --release --locked
 
 FROM debian:bookworm-slim

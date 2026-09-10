@@ -6,8 +6,9 @@ WORKDIR /src
 RUN git init && git remote add origin https://github.com/BoltzExchange/hold.git \
     && git fetch --depth=1 origin af0055b132f3b9f24d0b1d478a15005fcf8f014f \
     && git checkout --detach FETCH_HEAD
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
+# Scope caches per image for parallel Bake targets; lock concurrent builds of this image.
+RUN --mount=type=cache,id=cashu-bark-cln-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cashu-bark-cln-cargo-target,target=/src/target,sharing=locked \
     cargo build --locked --release --jobs 2 \
     && cp target/release/hold /usr/local/bin/hold
 # Corrected release manifest: the initial v26.06.7 tag lacked the release fixes.

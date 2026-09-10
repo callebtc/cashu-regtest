@@ -9,8 +9,9 @@ RUN git init && git remote add origin https://github.com/ark-bitcoin/bark.git \
     && git checkout --detach FETCH_HEAD
 # Bound compiler memory use on development machines and CI runners.
 ENV CARGO_PROFILE_RELEASE_LTO=false
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
+# Scope caches per image for parallel Bake targets; lock concurrent builds of this image.
+RUN --mount=type=cache,id=cashu-bark-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cashu-bark-cargo-target,target=/src/target,sharing=locked \
     cargo build --locked --release --jobs 2 --bin captaind --bin bark \
     && cp target/release/captaind target/release/bark /usr/local/bin/
 
